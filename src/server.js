@@ -20,11 +20,14 @@ import { RegisterSocket } from "./Socket/socket.js";
 
 dotenv.config({ quiet: true });
 console.log("JWT_SECRET:", process.env.JWT_SECRET);
-
+const allowedOrigins = [
+  "https://bims-du6zrg3zt-robel2712s-projects.vercel.app",
+  "http://localhost:5173"
+];
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: "https://bims-du6zrg3zt-robel2712s-projects.vercel.app"||"http://localhost:5173",
+  cors: allowedOrigins,
   methods: ["GET", "POST"],
 });
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
@@ -32,12 +35,13 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.get("/",(req, res){
+app.get("/",(req, res)=>{
   res.json("Welcome to Bims Api")
 })
+
 app.use(
   cors({
-    origin: "https://bims-du6zrg3zt-robel2712s-projects.vercel.app", // or '*', for all origins (not recommended for production)
+    origin: allowedOrigins, // or '*', for all origins (not recommended for production)
     credentials: true,
   })
 );
@@ -61,13 +65,14 @@ async function StartServer() {
       .connect(process.env.MONGO_URL)
       .then(() => console.log("MongoDB Connected!!"));
 
-    server.listen(process.env.PORT, () => {
-      console.log(`Server Running on port: ${process.env.PORT}`);
-    });
+    // server.listen(process.env.PORT, () => {
+    //   console.log(`Server Running on port: ${process.env.PORT}`);
+    // });
   } catch (error) {
     console.log(error);
   }
 }
 
 StartServer();
+
 
