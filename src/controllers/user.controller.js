@@ -159,6 +159,7 @@ export const UpdateUserProfile = async (req, res) => {
     if (req.file) {
       const blob = await put(req.file.originalname, req.file.buffer, {
         access: "public", // so frontend can fetch it directly
+        token: process.env.BLOB_READ_WRITE_TOKEN
       });
       user.photo = blob.url; // Save Blob CDN URL instead of local path
     }
