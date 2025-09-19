@@ -48,7 +48,7 @@ app.use("/api/commissions", commissionsRouter);
 app.use("/api/deals", dealsRouter);
 app.use("/api/report", reportRoute);
 app.use("/api/chat", chatRoute);
-app.use("/uploads", express.static("uploads"));
+// app.use("/uploads", express.static("uploads"));
 
 // Connect to MongoDB only once on cold start
 let isConnected = false;
