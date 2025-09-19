@@ -13,37 +13,32 @@ import chatRoute from "./routes/chat.routes.js";
 import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { swaggerOptions } from "./config/swaggerConfig.js";
-import http from "http";
-import { Server } from "socket.io";
 import cors from "cors";
-import { RegisterSocket } from "./Socket/socket.js";
 
+// Load env variables
 dotenv.config({ quiet: true });
 console.log("JWT_SECRET:", process.env.JWT_SECRET);
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: process.env.Client_Url,
-  methods: ["GET", "POST"],
-});
+
+// Swagger docs setup
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.get("/",(req, res)=>{
-  res.json({message:"Welcome to Bims Api"})
-})
-app.use(
-  cors({
-    origin: process.env.Client_Url, // or '*', for all origins (not recommended for production)
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: process.env.Client_Url || "*",
+  credentials: true,
+}));
 
-RegisterSocket(io);
+// Basic route
+app.get("/", (req, res) => {
+  res.json({ message: "Welcome to Bims API" });
+});
 
+// Routes
 app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/user", userRouter);
@@ -55,18 +50,23 @@ app.use("/api/report", reportRoute);
 app.use("/api/chat", chatRoute);
 app.use("/uploads", express.static("uploads"));
 
-async function StartServer() {
-  try {
-    await mongoose
-      .connect(process.env.MONGO_URL)
-      .then(() => console.log("MongoDB Connected!!"));
+// Connect to MongoDB only once on cold start
+let isConnected = false;
 
-    server.listen(process.env.PORT, () => {
-      console.log(`Server Running on port: ${process.env.PORT}`);
-    });
-  } catch (error) {
-    console.log(error);
+async function connectToDatabase() {
+  if (!isConnected) {
+    try {
+      await mongoose.connect(process.env.MONGO_URL);
+      console.log("MongoDB Connected!");
+      isConnected = true;
+    } catch (err) {
+      console.error("MongoDB connection error:", err);
+    }
   }
 }
 
-StartServer();
+// Export the handler for Vercel
+export default async function handler(req, res) {
+  await connectToDatabase();
+  return app(req, res); // Let Express handle the request
+}
