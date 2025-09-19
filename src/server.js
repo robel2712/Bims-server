@@ -33,7 +33,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.get("/",(req, res){
-  res.json({message:"Welcome to Bims Api"})
+  res.json("Welcome to Bims Api")
 })
 app.use(
   cors({
@@ -70,3 +70,4 @@ async function StartServer() {
 }
 
 StartServer();
+
