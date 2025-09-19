@@ -157,11 +157,13 @@ export const UpdateUserProfile = async (req, res) => {
 
     // ✅ Upload profile photo to Vercel Blob
     if (req.file) {
-      const blob = await put(req.file.originalname, req.file.buffer, {
-        access: "public", // so frontend can fetch it directly
-        token: process.env.BLOB_READ_WRITE_TOKEN
-      });
-      user.photo = blob.url; // Save Blob CDN URL instead of local path
+      const uniqueKey = `profile-${Date.now()}-${req.file.originalname}`;
+const blob = await put(uniqueKey, req.file.buffer, {
+  access: "public",
+  token: process.env.BLOB_READ_WRITE_TOKEN,
+});
+user.photo = blob.url;
+
     }
 
     if (address) {
