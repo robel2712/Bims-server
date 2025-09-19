@@ -4,7 +4,7 @@ import { Property } from "../models/property.model.js";
 import mongoose from "mongoose";
 import { Deal } from "../models/deals.model.js";
 import { Commission } from "../models/commision.model.js";
-
+import { put } from "@vercel/blob";
 export const getUserStats = async (req, res) => {
   try {
     // Select only the necessary fields for performance
@@ -126,6 +126,8 @@ export const getCurrentUserProfile = async (req, res) => {
   }
 };
 
+
+
 export const UpdateUserProfile = async (req, res) => {
   const { id, firstName, lastName, email, phoneNumber, socialLinks, address } =
     req.body;
@@ -136,12 +138,12 @@ export const UpdateUserProfile = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Update only if the fields are provided (not empty or undefined)
-    if (firstName && firstName.trim() !== "") user.firstName = firstName;
-    if (lastName && lastName.trim() !== "") user.lastName = lastName;
-    if (email && email.trim() !== "") user.email = email;
-    if (phoneNumber && phoneNumber.trim() !== "")
-      user.phoneNumber = phoneNumber;
+    // Update only if the fields are provided
+    if (firstName?.trim()) user.firstName = firstName;
+    if (lastName?.trim()) user.lastName = lastName;
+    if (email?.trim()) user.email = email;
+    if (phoneNumber?.trim()) user.phoneNumber = phoneNumber;
+
     if (socialLinks) {
       const parsedLinks =
         typeof socialLinks === "string" ? JSON.parse(socialLinks) : socialLinks;
@@ -152,9 +154,15 @@ export const UpdateUserProfile = async (req, res) => {
 
       user.socialLinks = { ...existingLinks, ...parsedLinks };
     }
+
+    // ✅ Upload profile photo to Vercel Blob
     if (req.file) {
-      user.photo = req.file.path.replace(/\\/g, "/");
+      const blob = await put(req.file.originalname, req.file.buffer, {
+        access: "public", // so frontend can fetch it directly
+      });
+      user.photo = blob.url; // Save Blob CDN URL instead of local path
     }
+
     if (address) {
       const parsedLocation =
         typeof address === "string" ? JSON.parse(address) : address;
@@ -167,10 +175,11 @@ export const UpdateUserProfile = async (req, res) => {
       .status(200)
       .json({ message: "Profile updated successfully", user });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ message: "Server Error" });
+    console.error("Profile update error:", error);
+    return res.status(500).json({ message: "Server Error", error: error.message });
   }
 };
+
 
 export const fetchAllUsers = async (req, res) => {
   try {
