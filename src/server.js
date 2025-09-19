@@ -24,7 +24,7 @@ console.log("JWT_SECRET:", process.env.JWT_SECRET);
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: "https://bims-du6zrg3zt-robel2712s-projects.vercel.app","http://localhost:5173",
+  cors: process.env.Client_Url,
   methods: ["GET", "POST"],
 });
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
@@ -32,12 +32,12 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.get("/",(req, res){
+app.get("/",(req, res)=>{
   res.json({message:"Welcome to Bims Api"})
 })
 app.use(
   cors({
-    origin: "https://bims-du6zrg3zt-robel2712s-projects.vercel.app", // or '*', for all origins (not recommended for production)
+    origin: process.env.Client_Url, // or '*', for all origins (not recommended for production)
     credentials: true,
   })
 );
