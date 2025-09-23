@@ -53,7 +53,6 @@ app.use("/api/chat", chatRoute);
 
 // Connect to MongoDB only once on cold start
 let isConnected = false;
-const handler = serverless(app);
 
 async function connectToDatabase() {
   if (!isConnected) {
