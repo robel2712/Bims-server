@@ -14,7 +14,6 @@ import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { swaggerOptions } from "./config/swaggerConfig.js";
 import cors from "cors";
-import serverless from 'serverless-http';
 
 // Load env variables
 dotenv.config({ quiet: true });
@@ -54,6 +53,7 @@ app.use("/api/chat", chatRoute);
 
 // Connect to MongoDB only once on cold start
 let isConnected = false;
+const handler = serverless(app);
 
 async function connectToDatabase() {
   if (!isConnected) {
@@ -67,10 +67,8 @@ async function connectToDatabase() {
   }
 }
 
-const serverlessHandler = serverless(app);
-
-// ✅ Export correct serverless handler for Vercel
-export default async function main(req, res) {
+// Export the handler for Vercel
+export default async function handler(req, res) {
   await connectToDatabase();
-  return serverlessHandler(req, res);
+  return app(req, res); // Let Express handle the request
 }
