@@ -29,7 +29,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
-  origin: process.env.Client_Url || "*",
+  origin: process.env.Client_Url || process.env.Admin_Url,
   credentials: true,
 }));
 
