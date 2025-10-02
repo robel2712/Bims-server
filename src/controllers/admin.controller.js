@@ -5,7 +5,7 @@ import { CreateNotification } from "../services/notificationService.js";
 import {Commission} from "../models/commision.model.js";
 import {User} from "../models/user.model.js";
 import mongoose from "mongoose";
-import { getMetrics } from "../utils/metric.js";
+import { getMetrics } from '../utils/metric.js'
 
 export const RejectListing = async (req, res) => {
   const { id, type, reason } = req.body;
