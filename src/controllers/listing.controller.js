@@ -5,7 +5,6 @@ import { CreateNotification } from "../services/notificationService.js";
 import { User } from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import mongoose from "mongoose";
-import { put } from "@vercel/blob";
 
 export const CreateListing = async (req, res) => {
   const {
@@ -21,7 +20,6 @@ export const CreateListing = async (req, res) => {
     specifications,
     rejection_reason,
   } = req.body;
-
   const parsedLocation =
     typeof location === "string" ? JSON.parse(location) : location;
   const parsedSpecifications =
@@ -37,7 +35,6 @@ export const CreateListing = async (req, res) => {
     return res.status(400).json({ message: "At least one image is required" });
   }
 
-  // Validation for Vehicle
   if (
     type === "Vehicle" &&
     (!title ||
@@ -51,7 +48,6 @@ export const CreateListing = async (req, res) => {
     return res.status(400).json({ message: "Missing required vehicle fields" });
   }
 
-  // Validation for Property
   if (
     type === "Property" &&
     (!title ||
@@ -68,23 +64,27 @@ export const CreateListing = async (req, res) => {
       .json({ message: "Missing required property fields" });
   }
 
+  const imagePaths = req.files.map((file) => file.path.replace(/\\/g, "/"));
+  // const formattedLocation = location
+  //   ? {
+  //       city: location.city,
+  //       subcity: location.subcity,
+  //       woreda: location.woreda,
+  //       address: location.address,
+  //     }
+  //   : null;
+  // const formattedSpecifications = specifications
+  //   ? {
+  //       bedrooms: specifications.bedrooms,
+  //       bathrooms: specifications.bathrooms,
+  //       area: specifications.area,
+  //       yearBuilt: specifications.yearBuilt,
+  //       condition: specifications.condition,
+  //       swimmingPool: specifications.swimmingPool,
+  //     }
+  //   : null;
+
   try {
-    // Upload images to Vercel Blob
-    const uploadPromises = req.files.map(async (file) => {
-      const { url } = await put(
-        `listings/${Date.now()}-${file.originalname}`,
-        file.buffer,
-        {
-          access: "public", // or "private"
-          token: process.env.BLOB_READ_WRITE_TOKEN, // from Vercel dashboard
-        }
-      );
-      return url;
-    });
-
-    const imagePaths = await Promise.all(uploadPromises);
-
-    // Create Listing
     const listing =
       type === "Vehicle"
         ? await Vehicle.create({
@@ -113,7 +113,6 @@ export const CreateListing = async (req, res) => {
       .status(201)
       .json({ message: "Listing created successfully", listing });
   } catch (error) {
-    console.error("Error creating listing:", error);
     return res
       .status(500)
       .json({ message: "Server error", error: error.message });
@@ -261,6 +260,7 @@ export const verifyListing = async (req, res) => {
       listing_id: listing._id,
       listing_type: listing.type,
       message: "Your listing have been approved",
+      status:"accepted"
     });
 
     return res.status(200).json({
@@ -444,7 +444,8 @@ export const AssignClientToDeal = async (req, res) => {
       listingId: listingId,
       listingType: deal.listing_type,
       message: "A client contacted you about this deal.",
-      clientId:client_id
+      clientId:client_id,
+      status:"accepted"
     });
 
     await CreateNotification({
@@ -453,7 +454,8 @@ export const AssignClientToDeal = async (req, res) => {
       listingId: listingId,
       listingType: deal.listing_type,
       message: "A client is now in contact about your listing.",
-      clientId:client_id
+      clientId:client_id,
+      status:"accepted"
     });
 
     return res.status(200).json({
