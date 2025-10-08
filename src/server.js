@@ -30,7 +30,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
   origin: [process.env.Client_Url ,
-   process.env.Admin_Url],
+   process.env.Admin_Url,process.env.Web_app],
   credentials: true,
 }));
 
