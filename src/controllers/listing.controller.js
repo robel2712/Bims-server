@@ -156,6 +156,9 @@ export const fetchListing = async (req, res) => {
         } else if (type === "vehicle") {
           filter.$or = [{ title: regex }];
         }
+        else{
+          filter.$or =[{title:regex}]
+        }
       }
       return filter;
     };
