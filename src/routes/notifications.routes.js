@@ -182,6 +182,6 @@ router.patch("/:id/read", AuthMiddleWare, markNotificationAsRead);
  *                   type: string
  */
 router.patch("/read-all", AuthMiddleWare, markAllNotificationsAsRead);
-router.post("/respond-to-broker-request",RespondToBrokerRequest)
-
+router.post("/respond-to-broker-request",RespondToBrokerRequest);
+router.get("/pendingrequest",GetPendingRequestsByBroker);
 export default router;
