@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   GetNotifications,
+  GetPendingRequestsByBroker,
   markAllNotificationsAsRead,
   markNotificationAsRead,
   RespondToBrokerRequest,
