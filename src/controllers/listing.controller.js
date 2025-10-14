@@ -5,10 +5,7 @@ import { CreateNotification } from "../services/notificationService.js";
 import { User } from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import mongoose from "mongoose";
-
 import { put } from "@vercel/blob";
-import Vehicle from "../models/Vehicle.js";
-import Property from "../models/Property.js";
 
 export const CreateListing = async (req, res) => {
   const {
