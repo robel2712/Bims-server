@@ -6,6 +6,10 @@ import { User } from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import mongoose from "mongoose";
 
+import { put } from "@vercel/blob";
+import Vehicle from "../models/Vehicle.js";
+import Property from "../models/Property.js";
+
 export const CreateListing = async (req, res) => {
   const {
     type,
@@ -20,71 +24,70 @@ export const CreateListing = async (req, res) => {
     specifications,
     rejection_reason,
   } = req.body;
-  const parsedLocation =
-    typeof location === "string" ? JSON.parse(location) : location;
-  const parsedSpecifications =
-    typeof specifications === "string"
-      ? JSON.parse(specifications)
-      : specifications;
-  const parsedVehicleSpecs =
-    typeof vehicleSpecs === "string" ? JSON.parse(vehicleSpecs) : vehicleSpecs;
-
-  if (!type) return res.status(400).json({ message: "Missing listing type" });
-
-  if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ message: "At least one image is required" });
-  }
-
-  if (
-    type === "Vehicle" &&
-    (!title ||
-      !description ||
-      !category ||
-      !price ||
-      !vehicleSpecs ||
-      !owner_id ||
-      !status)
-  ) {
-    return res.status(400).json({ message: "Missing required vehicle fields" });
-  }
-
-  if (
-    type === "Property" &&
-    (!title ||
-      !description ||
-      !category ||
-      !price ||
-      !specifications ||
-      !owner_id ||
-      !status ||
-      !location)
-  ) {
-    return res
-      .status(400)
-      .json({ message: "Missing required property fields" });
-  }
-
-  const imagePaths = req.files.map((file) => file.path.replace(/\\/g, "/"));
-  // const formattedLocation = location
-  //   ? {
-  //       city: location.city,
-  //       subcity: location.subcity,
-  //       woreda: location.woreda,
-  //       address: location.address,
-  //     }
-  //   : null;
-  // const formattedSpecifications = specifications
-  //   ? {
-  //       bedrooms: specifications.bedrooms,
-  //       bathrooms: specifications.bathrooms,
-  //       area: specifications.area,
-  //       yearBuilt: specifications.yearBuilt,
-  //       condition: specifications.condition,
-  //       swimmingPool: specifications.swimmingPool,
-  //     }
-  //   : null;
 
   try {
+    // Parse possible stringified fields
+    const parsedLocation =
+      typeof location === "string" ? JSON.parse(location) : location;
+    const parsedSpecifications =
+      typeof specifications === "string"
+        ? JSON.parse(specifications)
+        : specifications;
+    const parsedVehicleSpecs =
+      typeof vehicleSpecs === "string" ? JSON.parse(vehicleSpecs) : vehicleSpecs;
+
+    if (!type)
+      return res.status(400).json({ message: "Missing listing type" });
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "At least one image is required" });
+    }
+
+    // Required fields validation
+    if (
+      type === "Vehicle" &&
+      (!title ||
+        !description ||
+        !category ||
+        !price ||
+        !vehicleSpecs ||
+        !owner_id ||
+        !status)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Missing required vehicle fields" });
+    }
+
+    if (
+      type === "Property" &&
+      (!title ||
+        !description ||
+        !category ||
+        !price ||
+        !specifications ||
+        !owner_id ||
+        !status ||
+        !location)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Missing required property fields" });
+    }
+
+    // ✅ Upload each image to Vercel Blob
+    const uploadedImages = await Promise.all(
+      req.files.map(async (file) => {
+        const uniqueKey = `listing-${Date.now()}-${file.originalname}`;
+        const blob = await put(uniqueKey, file.buffer, {
+          access: "public",
+          token: process.env.BLOB_READ_WRITE_TOKEN,
+        });
+        return blob.url; // Return URL
+      })
+    );
+
+    // ✅ Save in MongoDB
     const listing =
       type === "Vehicle"
         ? await Vehicle.create({
@@ -95,7 +98,7 @@ export const CreateListing = async (req, res) => {
             vehicleSpecs: parsedVehicleSpecs,
             owner_id,
             status: status || "pending",
-            image_paths: imagePaths,
+            image_paths: uploadedImages, // URLs from Blob
           })
         : await Property.create({
             title,
@@ -104,7 +107,7 @@ export const CreateListing = async (req, res) => {
             price,
             location: parsedLocation,
             specifications: parsedSpecifications,
-            image_paths: imagePaths,
+            image_paths: uploadedImages, // URLs from Blob
             owner_id,
             status: status || "pending",
           });
@@ -113,11 +116,11 @@ export const CreateListing = async (req, res) => {
       .status(201)
       .json({ message: "Listing created successfully", listing });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Server error", error: error.message });
+    console.error("CreateListing error:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 export const fetchListing = async (req, res) => {
   try {
