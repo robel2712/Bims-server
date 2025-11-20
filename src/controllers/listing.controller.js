@@ -5,7 +5,6 @@ import { CreateNotification } from "../services/notificationService.js";
 import { User } from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import mongoose from "mongoose";
-import { put } from "@vercel/blob";
 
 export const CreateListing = async (req, res) => {
   const {
@@ -20,71 +19,78 @@ export const CreateListing = async (req, res) => {
     location,
     specifications,
     rejection_reason,
+    needBroker
   } = req.body;
+  const parsedLocation =
+    typeof location === "string" ? JSON.parse(location) : location;
+  const parsedSpecifications =
+    typeof specifications === "string"
+      ? JSON.parse(specifications)
+      : specifications;
+  const parsedVehicleSpecs =
+    typeof vehicleSpecs === "string" ? JSON.parse(vehicleSpecs) : vehicleSpecs;
+
+  if (!type) return res.status(400).json({ message: "Missing listing type" });
+
+  // Validate images
+if (!req.files || !req.files.images || req.files.images.length === 0) {
+  return res.status(400).json({ message: "At least one image is required" });
+}
+
+  if (
+    type === "Vehicle" &&
+    (!title ||
+      !description ||
+      !category ||
+      !price ||
+      !vehicleSpecs ||
+      !owner_id ||
+      !status||!needBroker)
+  ) {
+    return res.status(400).json({ message: "Missing required vehicle fields" });
+  }
+
+  if (
+    type === "Property" &&
+    (!title ||
+      !description ||
+      !category ||
+      !price ||
+      !specifications ||
+      !owner_id ||
+      !status ||
+      !location||!needBroker)
+  ) {
+    return res
+      .status(400)
+      .json({ message: "Missing required property fields" });
+  }
+
+  const imagePaths =
+  req.files?.images?.map((file) => file.path.replace(/\\/g, "/")) || [];
+
+const proofImage =
+  req.files?.proofimages?.map((file) => file.path.replace(/\\/g, "/")) || [];
+  // const formattedLocation = location
+  //   ? {
+  //       city: location.city,
+  //       subcity: location.subcity,
+  //       woreda: location.woreda,
+  //       address: location.address,
+  //     }
+  //   : null;
+  // const formattedSpecifications = specifications
+  //   ? {
+  //       bedrooms: specifications.bedrooms,
+  //       bathrooms: specifications.bathrooms,
+  //       area: specifications.area,
+  //       yearBuilt: specifications.yearBuilt,
+  //       condition: specifications.condition,
+  //       swimmingPool: specifications.swimmingPool,
+  //     }
+  //   : null;
 
   try {
-    // Parse possible stringified fields
-    const parsedLocation =
-      typeof location === "string" ? JSON.parse(location) : location;
-    const parsedSpecifications =
-      typeof specifications === "string"
-        ? JSON.parse(specifications)
-        : specifications;
-    const parsedVehicleSpecs =
-      typeof vehicleSpecs === "string" ? JSON.parse(vehicleSpecs) : vehicleSpecs;
-
-    if (!type)
-      return res.status(400).json({ message: "Missing listing type" });
-
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: "At least one image is required" });
-    }
-
-    // Required fields validation
-    if (
-      type === "Vehicle" &&
-      (!title ||
-        !description ||
-        !category ||
-        !price ||
-        !vehicleSpecs ||
-        !owner_id ||
-        !status)
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Missing required vehicle fields" });
-    }
-
-    if (
-      type === "Property" &&
-      (!title ||
-        !description ||
-        !category ||
-        !price ||
-        !specifications ||
-        !owner_id ||
-        !status ||
-        !location)
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Missing required property fields" });
-    }
-
-    // ✅ Upload each image to Vercel Blob
-    const uploadedImages = await Promise.all(
-      req.files.map(async (file) => {
-        const uniqueKey = `listing-${Date.now()}-${file.originalname}`;
-        const blob = await put(uniqueKey, file.buffer, {
-          access: "public",
-          token: process.env.BLOB_READ_WRITE_TOKEN,
-        });
-        return blob.url; // Return URL
-      })
-    );
-
-    // ✅ Save in MongoDB
     const listing =
       type === "Vehicle"
         ? await Vehicle.create({
@@ -95,7 +101,9 @@ export const CreateListing = async (req, res) => {
             vehicleSpecs: parsedVehicleSpecs,
             owner_id,
             status: status || "pending",
-            image_paths: uploadedImages, // URLs from Blob
+            image_paths: imagePaths,
+            proofImage_paths:proofImage,
+            needBroker
           })
         : await Property.create({
             title,
@@ -104,20 +112,22 @@ export const CreateListing = async (req, res) => {
             price,
             location: parsedLocation,
             specifications: parsedSpecifications,
-            image_paths: uploadedImages, // URLs from Blob
+            image_paths: imagePaths,
             owner_id,
             status: status || "pending",
+            needBroker,
+            proofImage_paths:proofImage
           });
 
     return res
       .status(201)
       .json({ message: "Listing created successfully", listing });
   } catch (error) {
-    console.error("CreateListing error:", error);
-    return res.status(500).json({ message: "Server error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
   }
 };
-
 
 export const fetchListing = async (req, res) => {
   try {
@@ -131,37 +141,76 @@ export const fetchListing = async (req, res) => {
       search,
     } = req.query;
 
-    const userId = req.user?.id; // assuming you set user in auth middleware
+    const userId = req.user?._id || req.user?.id; // Current logged-in user
     const skip = (page - 1) * limit;
-    const pagination = { page: Number(page), limit: Number(limit) };
+    const userType = req.user?.userType; 
 
+    if (userType === "broker") {
+      req.query.needBroker = "Yes"; // brokers only see listings that need brokers
+      }
+
+
+    // Fetch deals assigned to the current user
+    const userDeals = await Deal.find({ client_id: userId })
+      .select("listing_id")
+      .lean();
+    const userDealListingIds = userDeals.map((deal) => deal.listing_id?.toString());
+
+    // Fetch all deals with clients assigned (to exclude others' deals)
+    const allDeals = await Deal.find({ client_id: { $exists: true } })
+      .select("listing_id client_id")
+      .lean();
+
+    // Extract listings assigned to other clients
+    const listingsAssignedToOthers = allDeals
+      .filter((deal) => deal.client_id?.toString() !== userId)
+      .map((deal) => deal.listing_id?.toString());
+
+    // Build filter dynamically
     const buildFilter = (type) => {
-      const filter = {};
+      const filter = {
+        _id: { $nin: listingsAssignedToOthers }, // Exclude listings assigned to other clients
+        status:{$in:["approved","sold"]}
+      };
       if (minPrice || maxPrice) {
         filter.price = {};
         if (minPrice) filter.price.$gte = Number(minPrice);
         if (maxPrice) filter.price.$lte = Number(maxPrice);
       }
-      if (category && category !== "all") {
-        filter.category = category;
-      }
+      if (category && category !== "all") filter.category = category;
       if (search) {
         const regex = new RegExp(search, "i");
-        if (type === "property") {
-          filter.$or = [
-            { title: regex },
-            { "location.city": regex },
-            { "location.subcity": regex },
-          ];
-        } else if (type === "vehicle") {
-          filter.$or = [{ title: regex }];
-        }
-        else{
-          filter.$or =[{title:regex}]
-        }
+        filter.$or = [
+          { title: regex },
+          { "location.city": regex },
+          { "location.subcity": regex },
+        ];
       }
+    if (userType === "broker") {
+    filter.needBroker = "Yes";
+  } else {
+    // client – keep the $or we may have added for search
+    const clientOr = [
+      { needBroker: "No" },
+      { needBroker: "Yes", is_broker_assigned: true },
+    ];
+    if (filter.$or) {
+      // merge search $or with client $or
+      filter.$and = [
+        { $or: filter.$or },
+        { $or: clientOr },
+      ];
+      delete filter.$or;
+    } else {
+      filter.$or = clientOr;
+    }
+  }
       return filter;
     };
+
+    console.log("User ID:", userId);
+    console.log("User Deal Listing IDs:", userDealListingIds);
+    console.log("Listings assigned to others:", listingsAssignedToOthers);
 
     const fetchData = (Model, type) =>
       Model.find(buildFilter(type))
@@ -172,13 +221,8 @@ export const fetchListing = async (req, res) => {
         .then((data) =>
           data.map((item) => ({
             ...item,
-            owner: item.owner_id
-              ? {
-                  firstName: item.owner_id.firstName,
-                  lastName: item.owner_id.lastName,
-                }
-              : null,
             type,
+            isAssignedToCurrentUser: userDealListingIds.includes(item._id?.toString()),
           }))
         );
 
@@ -203,14 +247,13 @@ export const fetchListing = async (req, res) => {
     return res.status(200).json({
       message: "Listings fetched successfully",
       listings,
-      pagination: { ...pagination, totalItems, totalPages },
+      pagination: { page: Number(page), limit: Number(limit), totalItems, totalPages },
     });
   } catch (err) {
     console.error("Error fetching listings:", err);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };
-
 export const fetchListingCount = async (req, res) => {
   const { id } = req.params;
 
@@ -265,6 +308,30 @@ export const verifyListing = async (req, res) => {
       message: "Your listing have been approved",
       status:"accepted"
     });
+    const existingDeal = await Deal.findOne({
+      listing_id: listing._id,
+      listing_type: type,
+    });
+       if (!existingDeal) {
+      await Deal.create({
+  listing_id: listing._id,
+  owner_id: listing.owner_id,
+  broker_id:null,
+  title: listing.title,
+  listing_type: type,
+  status: 'active',
+  listing_snapshot: {
+    title: listing.title,
+    description: listing.description,
+    price: listing.price,
+    location: listing.location,
+    images: listing.image_paths || listing.images || [],
+  },
+});
+    }
+    else{
+      res.status(200).json({message:"deal already created"})
+    }
 
     return res.status(200).json({
       message: `Listing ${status} successfully`,
@@ -326,18 +393,26 @@ export const SetListingToBroker = async (req, res) => {
     listing.broker_id = broker_id ? broker_id : null;
     listing.is_broker_assigned = is_broker_assigned ? true : false;
     await listing.save();
-
-    await CreateNotification({
-      userId: listing.owner_id,
-      type: "request",
+    const existingNotification = await Notification.findOne({
       listingId: listing._id,
-      listingType: listing.type,
-      brokerId: broker_id, // add broker reference
-      message: "A broker requested to be assigned to your listing.",
-      link: `/broker-profile/${broker_id}`, // frontend redirect
-      action_required: true,
-      status: "pending",
+      brokerId: broker_id,
+      type: "request",
+      status: "pending", // only block if still pending
     });
+
+    if (!existingNotification) {
+      await CreateNotification({
+        userId: listing.owner_id,
+        type: "request",
+        listingId: listing._id,
+        listingType: listing.type,
+        brokerId: broker_id, // add broker reference
+        message: "A broker requested to be assigned to your listing.",
+        link: `/broker-profile/${broker_id}`, // frontend redirect
+        action_required: true,
+        status: "pending",
+      }); 
+    }
     return res.status(200).json({
       message: "Assignment request sent to the owner",
       listing,
@@ -381,22 +456,67 @@ export const MyListings = async (req, res) => {
 };
 
 export const getAssignedListings = async (req, res) => {
-  const { brokerId, type } = req.query;
+  const { brokerId, type, search, category, minPrice, maxPrice } = req.query;
 
   if (!brokerId || !type) {
     return res.status(400).json({ message: "Missing brokerId or type" });
   }
-  const normalizedType =
-    type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
 
   try {
+    const brokerObjectId = new mongoose.Types.ObjectId(brokerId);
+
+    const filters = {
+      broker_id: brokerObjectId,
+      is_broker_assigned: true,
+    };
+
+    // Category filter
+    if (category && category.toLowerCase() !== "all") {
+      filters.category = category.toLowerCase();
+    }
+
+    // Price range filter
+    if (minPrice != null || maxPrice != null) {
+      filters.price = {};
+      if (minPrice != null) filters.price.$gte = Number(minPrice);
+      if (maxPrice != null) filters.price.$lte = Number(maxPrice);
+    }
+
+    // Search logic — we'll add it below using regex
+    const searchQuery = search
+      ? {
+          $or: [
+            { title: { $regex: search, $options: "i" } },
+            { "location.city": { $regex: search, $options: "i" } },
+            { "location.subcity": { $regex: search, $options: "i" } },
+          ],
+        }
+      : {};
+
+    // Handle 'all' type (fetch from both Vehicle and Property models)
+    if (type.toLowerCase() === "all") {
+      const [vehicles, properties] = await Promise.all([
+        Vehicle.find({ ...filters, ...searchQuery })
+        .populate("broker_id","firstName lastName"),
+        Property.find({ ...filters, ...searchQuery })
+        .populate("broker_id","firstName lastName"),
+      ]);
+
+      const allListings = [...vehicles, ...properties].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+
+      return res.status(200).json(allListings);
+    }
+
+    // If specific type
+    const normalizedType =
+      type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+
     const model = normalizedType === "Vehicle" ? Vehicle : Property;
 
     const listings = await model
-      .find({
-        broker_id: brokerId,
-        is_broker_assigned: true,
-      })
+      .find({ ...filters, ...searchQuery })
       .sort({ createdAt: -1 });
 
     res.status(200).json(listings);
@@ -406,13 +526,82 @@ export const getAssignedListings = async (req, res) => {
   }
 };
 export const AssignClientToDeal = async (req, res) => {
-  const { listingId, broker_id, client_id } = req.body;
+  const { listingId, broker_id, client_id, listingType,title } = req.body;
 
-  if (!listingId || !broker_id || !client_id) {
+  // Required fields
+  if (!listingId || !client_id || !listingType) {
     return res.status(400).json({ message: "Missing required parameters" });
   }
 
   try {
+    // Determine model
+    const ListingModel = listingType === "Property" ? Property : Vehicle;
+
+    // Fetch listing to check needBroker & owner
+    const listing = await ListingModel.findById(listingId)
+      .select("needBroker owner_id")
+      .lean();
+
+    if (!listing) {
+      return res.status(404).json({ message: "Listing not found" });
+    }
+
+    const needBroker = listing.needBroker === true || listing.needBroker === "Yes";
+
+    // CASE 1: No Broker Needed (needBroker === "No" or false)
+    
+    if (!needBroker) {
+      // Find existing deal (any kind: broker or no broker)
+      let deal = await Deal.findOne({ listing_id: listingId });
+
+      if (deal) {
+        if (deal.client_id?.toString() === client_id) {
+          return res.status(200).json({ message: "Client already connected", deal });
+        }
+        if (deal.client_id) {
+          return res.status(400).json({ message: "Deal already assigned to another client" });
+        }
+
+        // Update existing deal
+        deal.client_id = client_id;
+        deal.status = "negotiating";
+        await deal.save();
+      } else {
+        // Create new direct deal
+        deal = await Deal.create({
+          listing_id: listingId,
+          listing_type: listingType,
+          owner_id: listing.owner_id,
+          client_id,
+          broker_id: null,
+          status: "negotiating",
+        });
+      }
+
+      // Notify owner only
+      await CreateNotification({
+        userId: listing.owner_id,
+        type: "client_assigned",
+        listingId,
+        listingType,
+        message: "A client is now in contact about your listing.",
+        clientId: client_id,
+        status: "accepted",
+      });
+
+      return res
+        .status(deal._id ? 201 : 200)
+        .json({ message: "Direct contact established", deal });
+    }
+
+    
+    // CASE 2: Broker Required (needBroker === true/"Yes")
+  
+    if (!broker_id) {
+      return res
+        .status(400)
+        .json({ message: "Broker ID is required when needBroker is true" });
+    }
     // Find the deal
     let deal = await Deal.findOne({ listing_id: listingId, broker_id });
 
@@ -426,21 +615,18 @@ export const AssignClientToDeal = async (req, res) => {
     if (deal.client_id && deal.client_id.toString() !== client_id) {
       return res
         .status(400)
-        .json({ message: "Deal already assigned to another client" });
+        // .json({ message: "Deal already assigned to another client" });
     }
+    if (deal.client_id && deal.client_id.toString() === client_id) {
+  return res.status(200).json({ message: "Client already assigned", deal });
+}
 
     // Assign client
     deal.client_id = client_id;
     deal.status = "negotiating";
     await deal.save();
 
-    // Optional: create first message
-    // await Message.create({
-    //   deal_id: deal._id,
-    //   sender: client_id,
-    //   content: "Hi, I’m interested in this listing",
-    // });
-
+    
     await CreateNotification({
       userId: deal.broker_id,
       type: "client_assigned",
@@ -465,7 +651,8 @@ export const AssignClientToDeal = async (req, res) => {
       message: "Client assigned to deal successfully",
       deal,
     });
-  } catch (error) {
+  }
+  catch (error) {
     console.error("Error in AssignClientToDeal:", error);
     return res
       .status(500)

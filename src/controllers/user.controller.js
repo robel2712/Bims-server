@@ -4,7 +4,7 @@ import { Property } from "../models/property.model.js";
 import mongoose from "mongoose";
 import { Deal } from "../models/deals.model.js";
 import { Commission } from "../models/commision.model.js";
-import { put } from "@vercel/blob";
+
 export const getUserStats = async (req, res) => {
   try {
     // Select only the necessary fields for performance
@@ -74,7 +74,7 @@ export const getAllUsers = async (req, res) => {
 
     const users = await User.find(
       filter,
-      "firstName lastName email phoneNumber userType verified createdAt documentVerification"
+      "firstName lastName email phoneNumber userType verified createdAt documentVerification lastLogin"
     );
 
     return res.status(200).json(users);
@@ -126,8 +126,6 @@ export const getCurrentUserProfile = async (req, res) => {
   }
 };
 
-
-
 export const UpdateUserProfile = async (req, res) => {
   const { id, firstName, lastName, email, phoneNumber, socialLinks, address } =
     req.body;
@@ -138,12 +136,12 @@ export const UpdateUserProfile = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Update only if the fields are provided
-    if (firstName?.trim()) user.firstName = firstName;
-    if (lastName?.trim()) user.lastName = lastName;
-    if (email?.trim()) user.email = email;
-    if (phoneNumber?.trim()) user.phoneNumber = phoneNumber;
-
+    // Update only if the fields are provided (not empty or undefined)
+    if (firstName && firstName.trim() !== "") user.firstName = firstName;
+    if (lastName && lastName.trim() !== "") user.lastName = lastName;
+    if (email && email.trim() !== "") user.email = email;
+    if (phoneNumber && phoneNumber.trim() !== "")
+      user.phoneNumber = phoneNumber;
     if (socialLinks) {
       const parsedLinks =
         typeof socialLinks === "string" ? JSON.parse(socialLinks) : socialLinks;
@@ -154,18 +152,9 @@ export const UpdateUserProfile = async (req, res) => {
 
       user.socialLinks = { ...existingLinks, ...parsedLinks };
     }
-
-    // ✅ Upload profile photo to Vercel Blob
     if (req.file) {
-      const uniqueKey = `profile-${Date.now()}-${req.file.originalname}`;
-const blob = await put(uniqueKey, req.file.buffer, {
-  access: "public",
-  token: process.env.BLOB_READ_WRITE_TOKEN,
-});
-user.photo = blob.url;
-
+      user.photo = req.file.path.replace(/\\/g, "/");
     }
-
     if (address) {
       const parsedLocation =
         typeof address === "string" ? JSON.parse(address) : address;
@@ -178,11 +167,10 @@ user.photo = blob.url;
       .status(200)
       .json({ message: "Profile updated successfully", user });
   } catch (error) {
-    console.error("Profile update error:", error);
-    return res.status(500).json({ message: "Server Error", error: error.message });
+    console.log(error);
+    return res.status(500).json({ message: "Server Error" });
   }
 };
-
 
 export const fetchAllUsers = async (req, res) => {
   try {
@@ -298,7 +286,9 @@ export const GetBrokerAnalytics = async (req, res) => {
 
     // Total commission
     const totalCommissionEarnings = await Commission.aggregate([
-      { $match: { broker_id: new mongoose.Types.ObjectId(brokerId) } },
+      { $match: { broker_id: new mongoose.Types.ObjectId(brokerId),
+        status:"paid"
+       } },
       {
         $group: {
           _id: null,
@@ -333,7 +323,9 @@ export const GetBrokerAnalytics = async (req, res) => {
 
     // Monthly commissions
     const monthlyCommissions = await Commission.aggregate([
-      { $match: { broker_id: new mongoose.Types.ObjectId(brokerId) } },
+      { $match: { broker_id: new mongoose.Types.ObjectId(brokerId),
+        status:"paid"
+      } },
       {
         $group: {
           _id: { $month: "$createdAt" },
@@ -391,7 +383,8 @@ export const GetBrokerAnalytics = async (req, res) => {
         status: c.status,
         client_payment_status: c.client_payment_status,
         owner_payment_status: c.owner_payment_status,
-        created_at: c.createdAt
+        created_at: c.createdAt,
+        listing_type:c.listing_type
       })))
   }
 });
@@ -399,5 +392,95 @@ export const GetBrokerAnalytics = async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server Error" });
+  }
+};
+
+export const Delete = async (req, res) => {
+  try {
+    const userId = req.user.id; // From JWT middleware
+
+    const deletedUser = await User.findByIdAndDelete(userId);
+
+    if (!deletedUser) {
+      return res.status(404).json({ error: "User not found or already deleted" });
+    }
+
+    res.status(200).json({ message: "User account deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+export const getassignedlistsforbroker = async (req, res) => {
+  try {
+    const [properties, vehicles] = await Promise.all([
+      Property.find({ assignedVerifier: req.params.brokerId, status: "assigned" }),
+      Vehicle.find({ assignedVerifier: req.params.brokerId, status: "assigned" }),
+    ]);
+
+    const combined = [
+      ...properties.map(p => ({ ...p.toObject(), listingType: "Property" })),
+      ...vehicles.map(v => ({ ...v.toObject(), listingType: "Vehicle" })),
+    ].sort((a, b) => new Date(b.assignedAt || b.createdAt) - new Date(a.assignedAt || a.createdAt));
+
+    res.json(combined);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+export const sendverificationstatusforadmin = async (req, res) => {
+  try {
+    const { decision, comment } = req.body; // "authentic" | "fake"
+    const id = req.params.id;
+
+    let listing = null;
+    let model = null;
+
+    // Try Property first
+    listing = await Property.findById(id);
+    if (listing) {
+      model = "Property";
+    } else {
+      // Try Vehicle
+      listing = await Vehicle.findById(id);
+      if (listing) {
+        model = "Vehicle";
+      }
+    }
+
+    if (!listing) {
+      return res.status(404).json({ message: "Listing not found" });
+    }
+
+    // Ensure assigned broker is the one verifying
+    if (listing.assignedVerifier?.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    // Apply verification status
+    if (decision === "authentic") {
+      listing.status = "approved";
+      listing.rejection_reason = "";
+    } else {
+      listing.status = "rejected";
+      listing.rejection_reason = comment || "Failed verification";
+    }
+
+    listing.verifiedBy = req.user.id;
+    listing.verifiedAt = new Date();
+    listing.verificationComment = comment || "";
+
+    await listing.save();
+
+    return res.json({
+      message: "Verification completed",
+      listingType: model,
+      id: listing._id,
+    });
+
+  } catch (err) {
+    console.error("Verification error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };

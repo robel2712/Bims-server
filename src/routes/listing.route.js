@@ -14,6 +14,7 @@ import {
   verifyListing,
 } from "../controllers/listing.controller.js";
 import { upload } from "../middleware/multer.middleware.js";
+import { AuthMiddleWare } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -175,7 +176,10 @@ const router = Router();
  *                   type: string
  */
 
-router.post("/create", upload.array("images", 5), CreateListing);
+router.post("/create",  upload.fields([
+    { name: "images", maxCount: 5 },
+    { name: "proofimages", maxCount: 2 }
+  ]), CreateListing);
 
 /**
  * @swagger
@@ -316,7 +320,7 @@ router.get("/fetchlistcount/:id", fetchListingCount);
  *                   type: string
  *                   example: Internal Server Error
  */
-router.get("/fetch", fetchListing);
+router.get("/fetch",AuthMiddleWare ,fetchListing);
 
 /**
  * @swagger

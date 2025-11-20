@@ -3,7 +3,7 @@ const CommissionSchema = new Schema({
   broker_id: {
     type: Schema.Types.ObjectId,
     ref: "User",
-    required: true,
+    // required: true,
   },
   owner_id: {
     type: Schema.Types.ObjectId,
@@ -42,27 +42,57 @@ const CommissionSchema = new Schema({
     required: true,
   },
   status: {
-    type: String,
-    enum: [
-      "pending",        // agreement created
-      "awaiting_payment", // property deal confirmed, commission unpaid
-      "paid",           // commission settled
-      "disputed",       // broker claims unpaid commission
-      "resolved"        // admin resolved dispute
-    ],
-    default: "pending",
-  },
-   invoice_url: String, // auto-generated commission invoice PDF
-  due_date: Date, // when commission must be paid
-  audit_log: [
-    {
-      actor: String, // "broker", "owner", "client", "admin"
-      action: String,
-      ref:String, //txRef from Chapa
-      timestamp: { type: Date, default: Date.now },
-    },
+  type: String,
+  enum: [
+    "pending",
+    "awaiting_payment",
+    "paid",
+    "failed",
   ],
-  
-});
+  default: "pending",
+},
+  invoice_url: String, // auto-generated commission invoice PDF
+  tx_ref: String,
+  due_date: Date, // when commission must be paid
+  // audit_log: [
+  //   {
+  //     actor: String, // "broker", "owner", "client"
+  //     action: String,
+  //     ref: String, //txRef from Chapa
+  //     timestamp: { type: Date, default: Date.now },
+  //   },
+  // ],
+  client_payment_status: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+  owner_payment_status: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+  owner_status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected"],
+      default: "pending",
+    },
+    client_status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected"],
+      default: "pending",
+    },
+
+  client_rejection_reason: String,
+  owner_rejection_reason: String,
+  payment_attempts: [{
+  tx_ref: String,
+  partyType: { type: String, enum: ['client', 'owner'] },
+  amount: Number,
+  user_id: { type: Schema.Types.ObjectId, ref: 'User' },
+  status: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+  initiatedAt: Date
+}],
+client_paid_at: Date,
+owner_paid_at: Date,
+commission_type: {
+      type: String,
+      enum: ["broker_commission", "system_commission"],
+      required: true,
+    },
+app_fee: { type: Number,default: 0,},
+},{timestamps:true});
 
 export const Commission = model("Commission", CommissionSchema);

@@ -1,8 +1,9 @@
 import { User } from "../models/user.model.js";
 import { Admin } from "../models/admin.model.js";
 import { createToken } from "../utils/jwtUtils.js";
+import { createAdminToken } from "../utils/jwtUtils.js";
 import bcrypt from "bcrypt";
-import {  sendOtpemail } from "../utils/OTP.js";
+import { sendOtpemail } from "../utils/OTP.js";
 import { CreateNotification } from "../services/notificationService.js";
 
 export const Register = async (req, res) => {
@@ -133,6 +134,7 @@ export const Login = async (req, res) => {
     }
     user.loginLast= new Date()
     await user.save();
+
     const token = createToken(user);
     return res.status(200).json({
       message: "user logged in",
@@ -170,11 +172,12 @@ export const AdminLogin = async (req, res) => {
       return res.status(403).json({ message: "Invalid Credentials" });
     }
 
-    const token = createToken(admin);
+    const token = createAdminToken(admin);
 
     return res.status(200).json({
       message: "admin logged in",
       email: admin.email,
+      name:admin.name,
       token: token,
     });
   } catch (error) {

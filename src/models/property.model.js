@@ -22,9 +22,9 @@ const PropertySchema = new mongoose.Schema(
         type: String,
         enum: ["excellent", "good", "fair", "needs_renovation"],
       },
-      swimmingPool: Boolean,
     },
     image_paths: [{ type: String }],
+    proofImage_paths: [{ type: String }],
     owner_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -39,12 +39,23 @@ const PropertySchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    needBroker: {
+  type: String,
+  enum: ["Yes", "No"],
+  required: true,
+  default: "No",
+},
     status: {
       type: String,
-      enum: ["pending", "draft", "approved", "rejected", "closed"],
+      enum: ["pending", "assigned","approved", "rejected", "sold"],
       required: true,
     },
     rejection_reason: { type: String, default: "" },
+    assignedVerifier: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    assignedAt: { type: Date },
+    verifiedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    verifiedAt: { type: Date },
+    verificationComment: { type: String, default: "" },
   },
   
   { timestamps: true }

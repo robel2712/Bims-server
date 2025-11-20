@@ -4,7 +4,7 @@ const DealSchema = new mongoose.Schema(
     broker_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      // required: true,
     },
     owner_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -23,7 +23,7 @@ const DealSchema = new mongoose.Schema(
       enum: ["active","negotiating", "agreement", "completed", "cancelled"],
       default: "active",
     },
-    offer: { type: Number, default: 0 },
+    // offer: { type: Number, default: 0 },
     title: { type: String, required: true },
 
     // 🔹 Hybrid Snapshot
@@ -34,7 +34,25 @@ const DealSchema = new mongoose.Schema(
       location: Object,
       images: [String],
     },
-    broker_notes: { type: String, default: "" },
+    owner_status: {
+      type: String,
+      enum: ['pending', 'accepted', 'cancelled'],
+      default: 'pending',
+    },
+    client_status: {
+      type: String,
+      enum: ['pending', 'accepted', 'cancelled'],
+      default: 'pending',
+    },
+    owner_rejection_reason: {
+      type: String,
+      default: null,
+    },
+    client_rejection_reason: {
+      type: String,
+      default: null,
+    },
+    // broker_notes: { type: String, default: "" },
     commission_id: { type: mongoose.Schema.Types.ObjectId, ref: "Commission" },
   },
   { timestamps: true }
