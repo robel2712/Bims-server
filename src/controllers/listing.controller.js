@@ -50,7 +50,7 @@ export const CreateListing = async (req, res) => {
 
     // === Upload main images to Vercel Blob ===
     const imageUploadPromises = req.files.images.map((file) =>
-      put(`listings/${uuidv4()}-${file.originalname}`, file.buffer, {
+      put(`listings/${file.originalname}`, file.buffer, {
         access: 'public',
         token: process.env.BLOB_READ_WRITE_TOKEN,
       })
@@ -63,7 +63,7 @@ export const CreateListing = async (req, res) => {
     let proofImageUrls = [];
     if (req.files.proofimages && req.files.proofimages.length > 0) {
       const proofUploadPromises = req.files.proofimages.map((file) =>
-        put(`proof/${uuidv4()}-${file.originalname}`, file.buffer, {
+        put(`proof/${file.originalname}`, file.buffer, {
           access: 'public',
           token: process.env.BLOB_READ_WRITE_TOKEN,
         })
