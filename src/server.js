@@ -11,7 +11,7 @@ import dealsRouter from "./routes/deals.routes.js";
 import reportRoute from "./routes/report.routes.js";
 import chatRoute from "./routes/chat.routes.js";
 import swaggerJSDoc from "swagger-jsdoc";
-import swaggerUi from "swagger-ui-express";
+import swaggerUi from "express-jsdoc-swagger";
 import { swaggerOptions } from "./config/swaggerConfig.js";
 import cors from "cors";
 
