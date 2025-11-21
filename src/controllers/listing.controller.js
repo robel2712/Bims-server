@@ -5,127 +5,111 @@ import { CreateNotification } from "../services/notificationService.js";
 import { User } from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import mongoose from "mongoose";
+import { put } from '@vercel/blob';
 
 export const CreateListing = async (req, res) => {
-  const {
-    type,
-    title,
-    description,
-    category,
-    price,
-    vehicleSpecs,
-    owner_id,
-    status,
-    location,
-    specifications,
-    rejection_reason,
-    needBroker
-  } = req.body;
-  const parsedLocation =
-    typeof location === "string" ? JSON.parse(location) : location;
-  const parsedSpecifications =
-    typeof specifications === "string"
-      ? JSON.parse(specifications)
-      : specifications;
-  const parsedVehicleSpecs =
-    typeof vehicleSpecs === "string" ? JSON.parse(vehicleSpecs) : vehicleSpecs;
-
-  if (!type) return res.status(400).json({ message: "Missing listing type" });
-
-  // Validate images
-if (!req.files || !req.files.images || req.files.images.length === 0) {
-  return res.status(400).json({ message: "At least one image is required" });
-}
-
-  if (
-    type === "Vehicle" &&
-    (!title ||
-      !description ||
-      !category ||
-      !price ||
-      !vehicleSpecs ||
-      !owner_id ||
-      !status||!needBroker)
-  ) {
-    return res.status(400).json({ message: "Missing required vehicle fields" });
-  }
-
-  if (
-    type === "Property" &&
-    (!title ||
-      !description ||
-      !category ||
-      !price ||
-      !specifications ||
-      !owner_id ||
-      !status ||
-      !location||!needBroker)
-  ) {
-    return res
-      .status(400)
-      .json({ message: "Missing required property fields" });
-  }
-
-  const imagePaths =
-  req.files?.images?.map((file) => file.path.replace(/\\/g, "/")) || [];
-
-const proofImage =
-  req.files?.proofimages?.map((file) => file.path.replace(/\\/g, "/")) || [];
-  // const formattedLocation = location
-  //   ? {
-  //       city: location.city,
-  //       subcity: location.subcity,
-  //       woreda: location.woreda,
-  //       address: location.address,
-  //     }
-  //   : null;
-  // const formattedSpecifications = specifications
-  //   ? {
-  //       bedrooms: specifications.bedrooms,
-  //       bathrooms: specifications.bathrooms,
-  //       area: specifications.area,
-  //       yearBuilt: specifications.yearBuilt,
-  //       condition: specifications.condition,
-  //       swimmingPool: specifications.swimmingPool,
-  //     }
-  //   : null;
-
   try {
-    const listing =
-      type === "Vehicle"
-        ? await Vehicle.create({
-            title,
-            description,
-            category,
-            price,
-            vehicleSpecs: parsedVehicleSpecs,
-            owner_id,
-            status: status || "pending",
-            image_paths: imagePaths,
-            proofImage_paths:proofImage,
-            needBroker
-          })
-        : await Property.create({
-            title,
-            description,
-            category,
-            price,
-            location: parsedLocation,
-            specifications: parsedSpecifications,
-            image_paths: imagePaths,
-            owner_id,
-            status: status || "pending",
-            needBroker,
-            proofImage_paths:proofImage
-          });
+    const {
+      type,
+      title,
+      description,
+      category,
+      price,
+      vehicleSpecs,
+      owner_id,
+      status,
+      location,
+      specifications,
+      needBroker,
+    } = req.body;
 
-    return res
-      .status(201)
-      .json({ message: "Listing created successfully", listing });
+    // Parse JSON strings from frontend (if sent as string)
+    const parsedLocation = typeof location === 'string' ? JSON.parse(location) : location;
+    const parsedSpecifications = typeof specifications === 'string' ? JSON.parse(specifications) : specifications;
+    const parsedVehicleSpecs = typeof vehicleSpecs === 'string' ? JSON.parse(vehicleSpecs) : vehicleSpecs;
+
+    if (!type) return res.status(400).json({ message: 'Missing listing type' });
+
+    // === Validate images ===
+    if (!req.files || !req.files.images || req.files.images.length === 0) {
+      return res.status(400).json({ message: 'At least one image is required' });
+    }
+
+    // Required fields validation
+    if (type === 'Vehicle') {
+      if (!title || !description || !category || !price || !parsedVehicleSpecs || !owner_id || needBroker === undefined) {
+        return res.status(400).json({ message: 'Missing required vehicle fields' });
+      }
+    }
+
+    if (type === 'Property') {
+      if (!title || !description || !category || !price || !parsedSpecifications || !owner_id || !parsedLocation || needBroker === undefined) {
+        return res.status(400).json({ message: 'Missing required property fields' });
+      }
+    }
+
+    // === Upload main images to Vercel Blob ===
+    const imageUploadPromises = req.files.images.map((file) =>
+      put(`listings/${uuidv4()}-${file.originalname}`, file.buffer, {
+        access: 'public',
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      })
+    );
+
+    const uploadedImages = await Promise.all(imageUploadPromises);
+    const imageUrls = uploadedImages.map((blob) => blob.url);
+
+    // === Upload proof images (optional) ===
+    let proofImageUrls = [];
+    if (req.files.proofimages && req.files.proofimages.length > 0) {
+      const proofUploadPromises = req.files.proofimages.map((file) =>
+        put(`proof/${uuidv4()}-${file.originalname}`, file.buffer, {
+          access: 'public',
+          token: process.env.BLOB_READ_WRITE_TOKEN,
+        })
+      );
+      const uploadedProofs = await Promise.all(proofUploadPromises);
+      proofImageUrls = uploadedProofs.map((blob) => blob.url);
+    }
+
+    // === Create listing in MongoDB (save URLs only!) ===
+    const listingData = {
+      title,
+      description,
+      category,
+      price: Number(price),
+      owner_id,
+      status: status || 'pending',
+      image_paths: imageUrls,           // ← permanent URLs
+      proofImage_paths: proofImageUrls, // ← permanent URLs
+      needBroker: needBroker === 'true' || needBroker === true,
+    };
+
+    let listing;
+    if (type === 'Vehicle') {
+      listing = await Vehicle.create({
+        ...listingData,
+        vehicleSpecs: parsedVehicleSpecs,
+      });
+    } else {
+      // Property
+      listing = await Property.create({
+        ...listingData,
+        location: parsedLocation,
+        specifications: parsedSpecifications,
+      });
+    }
+
+    return res.status(201).json({
+      message: 'Listing created successfully',
+      listing,
+    });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Server error", error: error.message });
+    console.error('CreateListing error:', error);
+    return res.status(500).json({
+      message: 'Failed to create listing',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+    });
   }
 };
 
