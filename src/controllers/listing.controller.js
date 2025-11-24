@@ -6,6 +6,7 @@ import { User } from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import mongoose from "mongoose";
 import { put } from '@vercel/blob';
+import { Notifications } from "../models/notifications.model.js";
 
 export const CreateListing = async (req, res) => {
   try {
@@ -379,7 +380,7 @@ export const SetListingToBroker = async (req, res) => {
     listing.broker_id = broker_id ? broker_id : null;
     listing.is_broker_assigned = is_broker_assigned ? true : false;
     await listing.save();
-    const existingNotification = await Notification.findOne({
+    const existingNotification = await Notifications.findOne({
       listingId: listing._id,
       brokerId: broker_id,
       type: "request",
