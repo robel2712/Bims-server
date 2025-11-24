@@ -53,6 +53,7 @@ export const CreateListing = async (req, res) => {
       put(`listings/${file.originalname}`, file.buffer, {
         access: 'public',
         token: process.env.BLOB_READ_WRITE_TOKEN,
+        addRandomSuffix: true,
       })
     );
 
@@ -66,6 +67,7 @@ export const CreateListing = async (req, res) => {
         put(`proof/${file.originalname}`, file.buffer, {
           access: 'public',
           token: process.env.BLOB_READ_WRITE_TOKEN,
+          addRandomSuffix: true,
         })
       );
       const uploadedProofs = await Promise.all(proofUploadPromises);
