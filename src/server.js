@@ -14,13 +14,20 @@ import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { swaggerOptions } from "./config/swaggerConfig.js";
 import cors from "cors";
-
+import {Server} from "socket.io";
+import http from "http";
+import {RegisterSocket} from "./Socket/socket.js";
+import { incrementRequest } from "./utils/metric.js";
 // Load env variables
 dotenv.config({ quiet: true });
 console.log("JWT_SECRET:", process.env.JWT_SECRET);
 
 const app = express();
-
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: "http://localhost:5173",
+  methods: ["GET", "POST"],
+});
 // Swagger docs setup
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -33,11 +40,19 @@ app.use(cors({
    process.env.Admin_Url,process.env.Web_app],
   credentials: true,
 }));
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    if (req.originalUrl !== "/api/admin/system-health") {
+      incrementRequest(res.statusCode);
+    }
+  });
+  next();
+});
 
-// Basic route
 app.get("/", (req, res) => {
   res.json({ message: "Welcome to Bims API" });
 });
+RegisterSocket(io);
 
 // Routes
 app.use("/api/auth", authRouter);
