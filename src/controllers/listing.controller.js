@@ -37,13 +37,13 @@ export const CreateListing = async (req, res) => {
 
     // Required fields validation
     if (type === 'Vehicle') {
-      if (!title || !description || !category || !price || !parsedVehicleSpecs || !owner_id || needBroker === undefined) {
+      if (!title || !description || !category || !price || !parsedVehicleSpecs || !owner_id || !needBroker) {
         return res.status(400).json({ message: 'Missing required vehicle fields' });
       }
     }
 
     if (type === 'Property') {
-      if (!title || !description || !category || !price || !parsedSpecifications || !owner_id || !parsedLocation || needBroker === undefined) {
+      if (!title || !description || !category || !price || !parsedSpecifications || !owner_id || !parsedLocation || !needBroker) {
         return res.status(400).json({ message: 'Missing required property fields' });
       }
     }
@@ -82,7 +82,7 @@ export const CreateListing = async (req, res) => {
       status: status || 'pending',
       image_paths: imageUrls,           // ← permanent URLs
       proofImage_paths: proofImageUrls, // ← permanent URLs
-      needBroker: needBroker === 'true' || needBroker === true,
+      needBroker
     };
 
     let listing;
