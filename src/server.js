@@ -80,9 +80,10 @@ async function connectToDatabase() {
     }
   }
 }
+connectToDatabase()
 
-// Export the handler for Vercel
-export default async function handler(req, res) {
-  await connectToDatabase();
-  return app(req, res); // Let Express handle the request
-}
+
+const PORT = process.env.PORT;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
