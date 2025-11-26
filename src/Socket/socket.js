@@ -1,116 +1,156 @@
+// src/Socket/socket.js
 import ChatRoom from "../models/chat.model.js";
 import Message from "../models/message.model.js";
-import { onlineUsers } from "./socketManager.js"; // ⬅️ import global store
+import { onlineUsers } from "./socketManager.js";
 
 export function RegisterSocket(io) {
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    // Store userId from client
     let currentUserId = null;
 
-    // Expect user to send their userId after connection
+    // 1. Register user
     socket.on("register", ({ userId }) => {
-      if (userId) {
-        currentUserId = userId;
+      if (!userId) return;
 
-        // Support multiple sockets per user (e.g. multiple tabs)
-        if (!onlineUsers.has(userId)) {
-          onlineUsers.set(userId, new Set());
-        }
-        onlineUsers.get(userId).add(socket.id);
+      currentUserId = userId.toString();
 
-        console.log(`User ${userId} is online.`);
-        io.emit("userOnlineStatus", { userId, status: "online" }); // notify others
+      if (!onlineUsers.has(currentUserId)) {
+        onlineUsers.set(currentUserId, new Set());
       }
+      onlineUsers.get(currentUserId).add(socket.id);
+
+      console.log(`User ${currentUserId} is online (socket: ${socket.id})`);
+      socket.broadcast.emit("userOnlineStatus", { userId: currentUserId, status: "online" });
     });
 
+    // 2. Join or create room
     socket.on("joinRoom", async ({ roomId, userId, participants }) => {
       try {
         let room;
 
         if (roomId) {
           room = await ChatRoom.findById(roomId);
-          if (!room) return socket.emit("error", { message: "Room not found" });
-        } else {
-          const sortedParticipants = participants.sort();
+          if (!room) {
+            return socket.emit("error", { message: "Room not found" });
+          }
+        } else if (participants && participants.length >= 2) {
+          const sorted = participants.map(id => id.toString()).sort();
           room = await ChatRoom.findOne({
-            participants: {
-              $all: sortedParticipants,
-              $size: sortedParticipants.length,
-            },
+            participants: { $all: sorted, $size: sorted.length },
+            isGroup: false, // optional: only match 1-on-1 chats
           });
 
           if (!room) {
-            room = await ChatRoom.create({ participants: sortedParticipants });
+            room = await ChatRoom.create({
+              participants: sorted,
+              isGroup: false,
+            });
+            console.log("Created new chat room:", room._id);
           }
+        } else {
+          return socket.emit("error", { message: "Invalid participants" });
         }
 
-        socket.join(room._id.toString());
+        const roomIdStr = room._id.toString();
+        socket.join(roomIdStr);
 
-        console.log(`User ${userId} joined room: ${room._id}`);
         socket.emit("roomJoined", {
-          roomId: room._id,
+          roomId: roomIdStr,
           participants: room.participants,
         });
+
+        console.log(`User ${userId} joined room ${roomIdStr}`);
       } catch (err) {
         console.error("joinRoom error:", err);
-        socket.emit("error", { message: "Failed to join room" });
+        socket.emit("error", { message: "Failed to join/create room" });
       }
     });
 
-    socket.on("chatMessage", async ({ roomId, userId, message }) => {
-      try {
-        const msg = await Message.create({ roomId, senderId: userId, message });
+    // 3. FIXED chatMessage — NO MORE NULL CRASH
+    socket.on("chatMessage", async ({ roomId, userId, message: content }) => {
+      if (!roomId || !userId || !content?.trim()) {
+        console.warn("Invalid chatMessage payload:", { roomId, userId, content });
+        return;
+      }
 
-        // Determine message status based on recipient's status
+      try {
+        // 1. Verify room exists
         const room = await ChatRoom.findById(roomId);
-        const recipientId = room.participants.find((id) => id.toString() !== userId);
+        if (!room) {
+          console.log("chatMessage: Room not found →", roomId);
+          return socket.emit("error", { message: "Chat room does not exist" });
+        }
+
+        // 2. Find recipient (for 1-on-1 chat)
+        const recipientId = room.participants
+          .find(id => id.toString() !== userId.toString());
+
         const isRecipientOnline = recipientId && onlineUsers.has(recipientId.toString());
 
-        const status = isRecipientOnline ? "delivered" : "sent";
-        msg.status = status;
-        await msg.save();
-
-        // Emit the message using the same field names the client expects
-        io.to(roomId).emit("chatMessage", {
-          _id: msg._id,
-          roomId: roomId,
-          senderId: msg.senderId,
-          message: msg.message,
-          status: msg.status,
-          createdAt: msg.createdAt, // provide createdAt so client can parse dates
+        // 3. Create message
+        const msg = await Message.create({
+          roomId,
+          senderId: userId,
+          message: content,
+          status: isRecipientOnline ? "delivered" : "sent",
         });
+
+        const populatedMsg = await Message.findById(msg._id)
+          .populate("senderId", "name avatar image");
+
+        const messageData = {
+          _id: populatedMsg._id,
+          roomId: populatedMsg.roomId,
+          senderId: populatedMsg.senderId._id,
+          sender: populatedMsg.senderId, // full sender object
+          message: populatedMsg.message,
+          status: populatedMsg.status,
+          createdAt: populatedMsg.createdAt,
+        };
+
+        // 4. Emit to entire room
+        io.to(roomId.toString()).emit("chatMessage", messageData);
+
+        console.log(`Message sent in room ${roomId} by ${userId} → status: ${msg.status}`);
       } catch (err) {
-        console.error("chatMessage error:", err);
+        console.error("chatMessage error:", err.message);
       }
     });
 
+    // 4. Mark messages as read
     socket.on("markAsRead", async ({ roomId, userId }) => {
       try {
         await Message.updateMany(
-          { roomId, senderId: { $ne: userId }, status: { $ne: "read" } },
+          {
+            roomId,
+            senderId: { $ne: userId },
+            status: { $in: ["sent", "delivered"] },
+          },
           { $set: { status: "read" } }
         );
 
-        // Notify others in room and ensure the caller also receives the notification
-        io.to(roomId).emit("messagesRead", { roomId, readerId: userId });
-        socket.emit("messagesRead", { roomId, readerId: userId });
+        io.to(roomId.toString()).emit("messagesRead", { roomId, readerId: userId });
       } catch (err) {
         console.error("markAsRead error:", err);
       }
     });
 
-
+    // 5. Handle disconnect properly
     socket.on("disconnect", () => {
       console.log("User disconnected:", socket.id);
+
       if (currentUserId && onlineUsers.has(currentUserId)) {
-        const sockets = onlineUsers.get(currentUserId);
-        sockets.delete(socket.id);
-        if (sockets.size === 0) {
+        const userSockets = onlineUsers.get(currentUserId);
+        userSockets.delete(socket.id);
+
+        if (userSockets.size === 0) {
           onlineUsers.delete(currentUserId);
           console.log(`User ${currentUserId} is now offline`);
-          io.emit("userOnlineStatus", { userId: currentUserId, status: "offline" });
+          socket.broadcast.emit("userOnlineStatus", {
+            userId: currentUserId,
+            status: "offline",
+          });
         }
       }
     });
