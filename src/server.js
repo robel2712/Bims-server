@@ -24,11 +24,13 @@ console.log("JWT_SECRET:", process.env.JWT_SECRET);
 
 const app = express();
 const server = http.createServer(app);
+// const websocket = require('ws')
 const io = new Server(server, {
   path: "/socket.io",
   cors: {origin:[process.env.Client_Url],
   methods: ["GET", "POST"],
 }});
+// const ws = websocket.Server({server})
 // Swagger docs setup
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -54,6 +56,12 @@ app.get("/", (req, res) => {
   res.json({ message: "Welcome to Bims API" });
 });
 RegisterSocket(io);
+app.get("/socket-health", (req, res) => {
+  res.json({ 
+    online: true, 
+    sockets: io.engine.clientsCount 
+  });
+});
 
 // Routes
 app.use("/api/auth", authRouter);
