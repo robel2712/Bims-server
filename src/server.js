@@ -10,6 +10,7 @@ import commissionsRouter from "./routes/commissions.routes.js";
 import dealsRouter from "./routes/deals.routes.js";
 import reportRoute from "./routes/report.routes.js";
 import chatRoute from "./routes/chat.routes.js";
+import ratingRouter from "./routes/rating.routes.js";
 import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { swaggerOptions } from "./config/swaggerConfig.js";
@@ -73,6 +74,7 @@ app.use("/api/commissions", commissionsRouter);
 app.use("/api/deals", dealsRouter);
 app.use("/api/report", reportRoute);
 app.use("/api/chat", chatRoute);
+app.use("/api/ratings", ratingRouter);
 // app.use("/uploads", express.static("uploads"));
 
 // Connect to MongoDB only once on cold start
