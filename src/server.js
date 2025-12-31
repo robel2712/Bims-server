@@ -41,7 +41,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
   origin: [process.env.Client_Url , process.env.SOCKET_URL,
-   process.env.Admin_Url,process.env.Web_app],
+   process.env.Admin_Url,process.env.Web_App],
   credentials: true,
 }));
 app.use((req, res, next) => {

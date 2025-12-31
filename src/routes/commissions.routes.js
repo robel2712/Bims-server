@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from 'express'
 import {
   GetBrokerCommissions,
   getCommissionById,
@@ -9,6 +9,7 @@ import {
   sendPaymentReminder,
   updateCommissionDecision,
   verifyCommissionPayment,
+  getCommissionStats,
 } from "../controllers/commission.controller.js";
 import { AuthMiddleWare } from "../middleware/auth.middleware.js";
 const router = Router();
@@ -83,7 +84,7 @@ const router = Router();
  *       500:
  *         description: Server error
  */
-
+router.get("/stats", AuthMiddleWare, getCommissionStats);
 router.get("/get-all-commissions", GetCommissions);
 router.get("/getcommissionid", GetCommissionByListingId);
 
@@ -147,6 +148,7 @@ router.get("/getcommissionid", GetCommissionByListingId);
  */
 
 router.get("/broker", GetBrokerCommissions);
+router.get("/verify", verifyCommissionPayment);
 router.get("/:commissionId", getCommissionById);
 
 /**
@@ -296,12 +298,11 @@ router.post("/pay", PayCommission);
  *                   example: Internal Server Error
  */
 
-router.get("/verify", verifyCommissionPayment);
 router.patch(
   "/:commissionId/decision",
   AuthMiddleWare,
   updateCommissionDecision
 );
 router.post("/webhook", handleWebhook);
-router.post("/send-reminder",AuthMiddleWare,sendPaymentReminder);
+router.post("/send-reminder", AuthMiddleWare, sendPaymentReminder);
 export default router;
