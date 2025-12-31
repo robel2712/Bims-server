@@ -4,9 +4,6 @@ import { Property } from "../models/property.model.js";
 import mongoose from "mongoose";
 import { Deal } from "../models/deals.model.js";
 import { Commission } from "../models/commision.model.js";
-import { CreateNotification } from "../services/notificationService.js";
-import { Admin } from "../models/admin.model.js";
-import { put } from "@vercel/blob";
 
 export const getUserStats = async (req, res) => {
   try {
@@ -155,12 +152,15 @@ export const UpdateUserProfile = async (req, res) => {
 
       user.socialLinks = { ...existingLinks, ...parsedLinks };
     }
-     if (req.file) {
-      const blob = await put(req.file.originalname, req.file.buffer, {
-        access: "public", // so frontend can fetch it directly
-        token: process.env.BLOB_READ_WRITE_TOKEN
-      });
-      user.photo = blob.url; // Save Blob CDN URL instead of local path
+     // ✅ Upload profile photo to Vercel Blob
+    if (req.file) {
+      const uniqueKey = `profile-${Date.now()}-${req.file.originalname}`;
+const blob = await put(uniqueKey, req.file.buffer, {
+  access: "public",
+  token: process.env.BLOB_READ_WRITE_TOKEN,
+});
+user.photo = blob.url;
+
     }
     if (address) {
       const parsedLocation =
@@ -217,7 +217,7 @@ export const GetBrokers = async (req, res) => {
   try {
     const brokers = await User.find({ userType: "broker" })
       .select(
-        "firstName lastName email phoneNumber socialLinks photo verified userType averageRating ratingCount"
+        "firstName lastName email phoneNumber socialLinks photo verified userType"
       )
       .lean();
 
@@ -235,7 +235,7 @@ export const GetBrokerById = async (req, res) => {
     }
 
     const broker = await User.findOne({ _id: id, userType: "broker" })
-      .select("firstName lastName email phoneNumber socialLinks photo verified averageRating ratingCount")
+      .select("firstName lastName email phoneNumber socialLinks photo verified")
       .lean();
 
     if (!broker) {
@@ -293,12 +293,9 @@ export const GetBrokerAnalytics = async (req, res) => {
 
     // Total commission
     const totalCommissionEarnings = await Commission.aggregate([
-      {
-        $match: {
-          broker_id: new mongoose.Types.ObjectId(brokerId),
-          status: "paid"
-        }
-      },
+      { $match: { broker_id: new mongoose.Types.ObjectId(brokerId),
+        status:"paid"
+       } },
       {
         $group: {
           _id: null,
@@ -333,12 +330,9 @@ export const GetBrokerAnalytics = async (req, res) => {
 
     // Monthly commissions
     const monthlyCommissions = await Commission.aggregate([
-      {
-        $match: {
-          broker_id: new mongoose.Types.ObjectId(brokerId),
-          status: "paid"
-        }
-      },
+      { $match: { broker_id: new mongoose.Types.ObjectId(brokerId),
+        status:"paid"
+      } },
       {
         $group: {
           _id: { $month: "$createdAt" },
@@ -356,51 +350,51 @@ export const GetBrokerAnalytics = async (req, res) => {
     ]);
 
     return res.status(200).json({
-      message: "Success",
-      totals: {
+  message: "Success",
+  totals: {
         totalCommissions: totalCommissionEarnings[0]?.totalCommission || 0,
         totalDeals,
         totalListing,
         successRate: successRate.toFixed(2),
       },
-      analytics: {
-        overview: {
-          totalEarnings: totalCommissionEarnings[0]?.totalCommission || 0,
-          completedDeals: totalDeals,
-          successRate: Number(successRate.toFixed(2)),
-        },
-        monthlyData: monthNames.slice(1).map((month, index) => {
-          const sold = monthlySoldListings.find(m => m.month === month)?.soldListings || 0;
-          const commission = monthlyCommissions.find(m => m.month === month)?.commission || 0;
-          return {
-            month: month.substring(0, 3), // e.g. "Jan"
-            listings: sold,               // could also return property+vehicle per month if needed
-            earnings: commission
-          };
-        }),
-        dealPipeline: {
-          active: await Deal.countDocuments({ broker_id: brokerId, status: "active" }),
-          negotiating: await Deal.countDocuments({ broker_id: brokerId, status: "negotiating" }),
-          agreement: await Deal.countDocuments({ broker_id: brokerId, status: "agreement" }),
-          completed: await Deal.countDocuments({ broker_id: brokerId, status: "completed" }),
-          cancelled: await Deal.countDocuments({ broker_id: brokerId, status: "cancelled" })
-        },
-        commissionHistory: await Commission.find({ broker_id: brokerId })
-          .sort({ createdAt: -1 })
-          .limit(10)
-          .lean()
-          .then(cs => cs.map(c => ({
-            id: c._id,
-            listing_id: c.listing_id,
-            amount: c.total_commission,
-            status: c.status,
-            client_payment_status: c.client_payment_status,
-            owner_payment_status: c.owner_payment_status,
-            created_at: c.createdAt,
-            listing_type: c.listing_type
-          })))
-      }
-    });
+  analytics: {
+    overview: {
+      totalEarnings: totalCommissionEarnings[0]?.totalCommission || 0,
+      completedDeals: totalDeals,
+      successRate: Number(successRate.toFixed(2)),
+    },
+    monthlyData: monthNames.slice(1).map((month, index) => {
+      const sold = monthlySoldListings.find(m => m.month === month)?.soldListings || 0;
+      const commission = monthlyCommissions.find(m => m.month === month)?.commission || 0;
+      return {
+        month: month.substring(0, 3), // e.g. "Jan"
+        listings: sold,               // could also return property+vehicle per month if needed
+        earnings: commission
+      };
+    }),
+    dealPipeline: {
+      active: await Deal.countDocuments({ broker_id: brokerId, status: "active" }),
+      negotiating: await Deal.countDocuments({ broker_id: brokerId, status: "negotiating" }),
+      agreement: await Deal.countDocuments({ broker_id: brokerId, status: "agreement" }),
+      completed: await Deal.countDocuments({ broker_id: brokerId, status:"completed"}),
+      cancelled: await Deal.countDocuments({ broker_id: brokerId, status: "cancelled" })
+    },
+    commissionHistory: await Commission.find({ broker_id: brokerId })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean()
+      .then(cs => cs.map(c => ({
+        id: c._id,
+        listing_id: c.listing_id,
+        amount: c.total_commission,
+        status: c.status,
+        client_payment_status: c.client_payment_status,
+        owner_payment_status: c.owner_payment_status,
+        created_at: c.createdAt,
+        listing_type:c.listing_type
+      })))
+  }
+});
 
   } catch (error) {
     console.error(error);
@@ -471,36 +465,13 @@ export const sendverificationstatusforadmin = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    const admin = await Admin.findOne({ role: "admin" });
-    if (!admin) {
-      console.error("Admin user not found!");
-      return res.status(500).json({ message: "Admin account missing" });
-    }
     // Apply verification status
     if (decision === "authentic") {
-      listing.status = "broker_approved";
+      listing.status = "approved";
       listing.rejection_reason = "";
-      await CreateNotification({
-        userId: admin._id,
-        type: "Verification_review",
-        listingId: listing._id,
-        listingType: listing.type,
-        message: comment || "Listing has been verified and approved by broker",
-        status: "accepted"
-      });
-
     } else {
-      listing.status = "broker_rejected";
+      listing.status = "rejected";
       listing.rejection_reason = comment || "Failed verification";
-
-      await CreateNotification({
-        userId: admin._id,
-        type: "rejected",
-        listingId: listing._id,
-        listingType: listing.type,
-        message: listing.rejection_reason,
-        status: "rejected",
-      });
     }
 
     listing.verifiedBy = req.user.id;
