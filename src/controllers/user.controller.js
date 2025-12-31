@@ -6,6 +6,7 @@ import { Deal } from "../models/deals.model.js";
 import { Commission } from "../models/commision.model.js";
 import { CreateNotification } from "../services/notificationService.js";
 import { Admin } from "../models/admin.model.js";
+import { put } from "@vercel/blob";
 
 export const getUserStats = async (req, res) => {
   try {
@@ -154,8 +155,12 @@ export const UpdateUserProfile = async (req, res) => {
 
       user.socialLinks = { ...existingLinks, ...parsedLinks };
     }
-    if (req.file) {
-      user.photo = req.file.path.replace(/\\/g, "/");
+     if (req.file) {
+      const blob = await put(req.file.originalname, req.file.buffer, {
+        access: "public", // so frontend can fetch it directly
+        token: process.env.BLOB_READ_WRITE_TOKEN
+      });
+      user.photo = blob.url; // Save Blob CDN URL instead of local path
     }
     if (address) {
       const parsedLocation =
