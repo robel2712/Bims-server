@@ -49,6 +49,154 @@ export const getUserStats = async (req, res) => {
   }
 };
 
+export const getAllUsers = async (req, res) => {
+  try {
+    const { search = "", role = "all", verification = "all" } = req.query;
+
+    // Build the filter object
+    const filter = {};
+
+    if (role !== "all") {
+      filter.userType = role;
+    }
+
+    if (verification !== "all") {
+      filter.verified = verification === "verified";
+    }
+
+    if (search) {
+      filter.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const users = await User.find(
+      filter,
+      "firstName lastName email phoneNumber userType verified createdAt documentVerification lastLogin"
+    );
+
+    return res.status(200).json(users);
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getCurrentUserProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
+    const requestingUserId = req.user?._id || req.user?.id;
+
+    const user = await User.findById(id).select(
+      "firstName lastName email phoneNumber userType photo verified createdAt address saved isBanned isActive socialLinks"
+    );
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Manually populate the saved listings
+    const listings = [];
+    for (const save of user.saved) {
+      let Model;
+      if (save.listingType === "Vehicle") {
+        Model = Vehicle;
+      } else if (save.listingType === "Property") {
+        Model = Property;
+      } else {
+        continue; // Skip invalid types
+      }
+
+      const listing = await Model.findById(save.listingId)
+        .populate("broker_id", "firstName lastName")
+        .exec();
+
+      if (listing) {
+        listings.push(listing);
+      }
+    }
+
+    // DATA MASKING: Hide sensitive info if requester is not the profile owner
+    let userData = user.toObject();
+    const isOwnProfile = requestingUserId && String(requestingUserId) === String(id);
+
+    if (!isOwnProfile) {
+      // HIDE sensitive fields from strangers
+      delete userData.email;
+      delete userData.phoneNumber;
+      delete userData.address;
+      delete userData.socialLinks;
+      delete userData.saved; // Hide saved listings too
+    }
+
+    // Return the user profile with populated listings (only if own profile)
+    res.status(200).json({
+      ...userData,
+      listings: isOwnProfile ? listings : [], // Only show listings to owner
+      user: userData,
+    });
+  } catch (err) {
+    console.error("Error in /me route:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const UpdateUserProfile = async (req, res) => {
+  const { id, firstName, lastName, email, phoneNumber, socialLinks, address } =
+    req.body;
+
+  try {
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Update only if the fields are provided (not empty or undefined)
+    if (firstName && firstName.trim() !== "") user.firstName = firstName;
+    if (lastName && lastName.trim() !== "") user.lastName = lastName;
+    if (email && email.trim() !== "") user.email = email;
+    if (phoneNumber && phoneNumber.trim() !== "")
+      user.phoneNumber = phoneNumber;
+    if (socialLinks) {
+      const parsedLinks =
+        typeof socialLinks === "string" ? JSON.parse(socialLinks) : socialLinks;
+
+      const existingLinks = user.socialLinks
+        ? Object.fromEntries(user.socialLinks)
+        : {};
+
+      user.socialLinks = { ...existingLinks, ...parsedLinks };
+    }
+     // ✅ Upload profile photo to Vercel Blob
+    if (req.file) {
+      const uniqueKey = `profile-${Date.now()}-${req.file.originalname}`;
+const blob = await put(uniqueKey, req.file.buffer, {
+  access: "public",
+  token: process.env.BLOB_READ_WRITE_TOKEN,
+});
+user.photo = blob.url;
+
+    }
+    if (address) {
+      const parsedLocation =
+        typeof address === "string" ? JSON.parse(address) : address;
+      user.address = parsedLocation;
+    }
+
+    await user.save();
+
+    return res
+      .status(200)
+      .json({ message: "Profile updated successfully", user });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Server Error" });
+  }
+};
+
 export const fetchAllUsers = async (req, res) => {
   try {
     const users = await User.find(); // Adjust this line as needed

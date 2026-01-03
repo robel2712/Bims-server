@@ -19,6 +19,7 @@ import {Server} from "socket.io";
 import http from "http";
 import {RegisterSocket} from "./Socket/socket.js";
 import { incrementRequest } from "./utils/metric.js";
+import { startVerificationCleanupJob } from "./services/verificationService.js";
 // Load env variables
 dotenv.config({ quiet: true });
 console.log("JWT_SECRET:", process.env.JWT_SECRET);
@@ -97,4 +98,5 @@ connectToDatabase()
 const PORT = process.env.PORT;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  startVerificationCleanupJob();
 });
