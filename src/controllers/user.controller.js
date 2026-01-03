@@ -49,136 +49,6 @@ export const getUserStats = async (req, res) => {
   }
 };
 
-export const getAllUsers = async (req, res) => {
-  try {
-    const { search = "", role = "all", verification = "all" } = req.query;
-
-    // Build the filter object
-    const filter = {};
-
-    if (role !== "all") {
-      filter.userType = role;
-    }
-
-    if (verification !== "all") {
-      filter.verified = verification === "verified";
-    }
-
-    if (search) {
-      filter.$or = [
-        { firstName: { $regex: search, $options: "i" } },
-        { lastName: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-      ];
-    }
-
-    const users = await User.find(
-      filter,
-      "firstName lastName email phoneNumber userType verified createdAt documentVerification lastLogin"
-    );
-
-    return res.status(200).json(users);
-  } catch (error) {
-    console.error("Error fetching users:", error);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-export const getCurrentUserProfile = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const user = await User.findById(id).select(
-      "firstName lastName email phoneNumber userType photo verified createdAt address saved isBanned isActive"
-    );
-
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    // Manually populate the saved listings
-    const listings = [];
-    for (const save of user.saved) {
-      let Model;
-      if (save.listingType === "Vehicle") {
-        Model = Vehicle;
-      } else if (save.listingType === "Property") {
-        Model = Property;
-      } else {
-        continue; // Skip invalid types
-      }
-
-      const listing = await Model.findById(save.listingId)
-        .populate("broker_id", "firstName lastName") // Optionally populate broker details if broker_id is a ref to User
-        .exec();
-
-      if (listing) {
-        listings.push(listing);
-      }
-    }
-
-    // Return the user profile with populated listings
-    res.status(200).json({
-      ...user.toObject(), // Spread the user fields
-      listings,
-      user, // Add the populated listings array
-    });
-  } catch (err) {
-    console.error("Error in /me route:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-export const UpdateUserProfile = async (req, res) => {
-  const { id, firstName, lastName, email, phoneNumber, socialLinks, address } =
-    req.body;
-
-  try {
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Update only if the fields are provided (not empty or undefined)
-    if (firstName && firstName.trim() !== "") user.firstName = firstName;
-    if (lastName && lastName.trim() !== "") user.lastName = lastName;
-    if (email && email.trim() !== "") user.email = email;
-    if (phoneNumber && phoneNumber.trim() !== "")
-      user.phoneNumber = phoneNumber;
-    if (socialLinks) {
-      const parsedLinks =
-        typeof socialLinks === "string" ? JSON.parse(socialLinks) : socialLinks;
-
-      const existingLinks = user.socialLinks
-        ? Object.fromEntries(user.socialLinks)
-        : {};
-
-      user.socialLinks = { ...existingLinks, ...parsedLinks };
-    }
-     // ✅ Upload profile photo to Vercel Blob
-    if (req.file) {
-      const uniqueKey = `profile-${Date.now()}-${req.file.originalname}`;
-const blob = await put(uniqueKey, req.file.buffer, {
-  access: "public",
-  token: process.env.BLOB_READ_WRITE_TOKEN,
-});
-user.photo = blob.url;
-
-    }
-    if (address) {
-      const parsedLocation =
-        typeof address === "string" ? JSON.parse(address) : address;
-      user.address = parsedLocation;
-    }
-
-    await user.save();
-
-    return res
-      .status(200)
-      .json({ message: "Profile updated successfully", user });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({ message: "Server Error" });
-  }
-};
-
 export const fetchAllUsers = async (req, res) => {
   try {
     const users = await User.find(); // Adjust this line as needed
@@ -215,10 +85,30 @@ export const deactivateUser = async (req, res) => {
 
 export const GetBrokers = async (req, res) => {
   try {
-    const brokers = await User.find({ userType: "broker" })
+    const { search = "", minRating = 0 } = req.query;
+
+    const filter = {
+      userType: "broker",
+      isBanned: { $ne: true },
+      isActive: { $ne: false }
+    };
+
+    if (search) {
+      filter.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    if (minRating) {
+      filter.averageRating = { $gte: Number(minRating) };
+    }
+
+    const brokers = await User.find(filter)
       .select(
-        "firstName lastName email phoneNumber socialLinks photo verified userType"
+        "firstName lastName email phoneNumber socialLinks photo verified userType averageRating ratingCount"
       )
+      .sort({ averageRating: -1 })
       .lean();
 
     return res.status(200).json({ message: "Success", brokers });
@@ -235,7 +125,7 @@ export const GetBrokerById = async (req, res) => {
     }
 
     const broker = await User.findOne({ _id: id, userType: "broker" })
-      .select("firstName lastName email phoneNumber socialLinks photo verified")
+      .select("firstName lastName email phoneNumber socialLinks photo verified averageRating ratingCount")
       .lean();
 
     if (!broker) {
@@ -293,9 +183,12 @@ export const GetBrokerAnalytics = async (req, res) => {
 
     // Total commission
     const totalCommissionEarnings = await Commission.aggregate([
-      { $match: { broker_id: new mongoose.Types.ObjectId(brokerId),
-        status:"paid"
-       } },
+      {
+        $match: {
+          broker_id: new mongoose.Types.ObjectId(brokerId),
+          status: "paid"
+        }
+      },
       {
         $group: {
           _id: null,
@@ -330,9 +223,12 @@ export const GetBrokerAnalytics = async (req, res) => {
 
     // Monthly commissions
     const monthlyCommissions = await Commission.aggregate([
-      { $match: { broker_id: new mongoose.Types.ObjectId(brokerId),
-        status:"paid"
-      } },
+      {
+        $match: {
+          broker_id: new mongoose.Types.ObjectId(brokerId),
+          status: "paid"
+        }
+      },
       {
         $group: {
           _id: { $month: "$createdAt" },
@@ -350,51 +246,51 @@ export const GetBrokerAnalytics = async (req, res) => {
     ]);
 
     return res.status(200).json({
-  message: "Success",
-  totals: {
+      message: "Success",
+      totals: {
         totalCommissions: totalCommissionEarnings[0]?.totalCommission || 0,
         totalDeals,
         totalListing,
         successRate: successRate.toFixed(2),
       },
-  analytics: {
-    overview: {
-      totalEarnings: totalCommissionEarnings[0]?.totalCommission || 0,
-      completedDeals: totalDeals,
-      successRate: Number(successRate.toFixed(2)),
-    },
-    monthlyData: monthNames.slice(1).map((month, index) => {
-      const sold = monthlySoldListings.find(m => m.month === month)?.soldListings || 0;
-      const commission = monthlyCommissions.find(m => m.month === month)?.commission || 0;
-      return {
-        month: month.substring(0, 3), // e.g. "Jan"
-        listings: sold,               // could also return property+vehicle per month if needed
-        earnings: commission
-      };
-    }),
-    dealPipeline: {
-      active: await Deal.countDocuments({ broker_id: brokerId, status: "active" }),
-      negotiating: await Deal.countDocuments({ broker_id: brokerId, status: "negotiating" }),
-      agreement: await Deal.countDocuments({ broker_id: brokerId, status: "agreement" }),
-      completed: await Deal.countDocuments({ broker_id: brokerId, status:"completed"}),
-      cancelled: await Deal.countDocuments({ broker_id: brokerId, status: "cancelled" })
-    },
-    commissionHistory: await Commission.find({ broker_id: brokerId })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .lean()
-      .then(cs => cs.map(c => ({
-        id: c._id,
-        listing_id: c.listing_id,
-        amount: c.total_commission,
-        status: c.status,
-        client_payment_status: c.client_payment_status,
-        owner_payment_status: c.owner_payment_status,
-        created_at: c.createdAt,
-        listing_type:c.listing_type
-      })))
-  }
-});
+      analytics: {
+        overview: {
+          totalEarnings: totalCommissionEarnings[0]?.totalCommission || 0,
+          completedDeals: totalDeals,
+          successRate: Number(successRate.toFixed(2)),
+        },
+        monthlyData: monthNames.slice(1).map((month, index) => {
+          const sold = monthlySoldListings.find(m => m.month === month)?.soldListings || 0;
+          const commission = monthlyCommissions.find(m => m.month === month)?.commission || 0;
+          return {
+            month: month.substring(0, 3), // e.g. "Jan"
+            listings: sold,               // could also return property+vehicle per month if needed
+            earnings: commission
+          };
+        }),
+        dealPipeline: {
+          active: await Deal.countDocuments({ broker_id: brokerId, status: "active" }),
+          negotiating: await Deal.countDocuments({ broker_id: brokerId, status: "negotiating" }),
+          agreement: await Deal.countDocuments({ broker_id: brokerId, status: "agreement" }),
+          completed: await Deal.countDocuments({ broker_id: brokerId, status: "completed" }),
+          cancelled: await Deal.countDocuments({ broker_id: brokerId, status: "cancelled" })
+        },
+        commissionHistory: await Commission.find({ broker_id: brokerId })
+          .sort({ createdAt: -1 })
+          .limit(10)
+          .lean()
+          .then(cs => cs.map(c => ({
+            id: c._id,
+            listing_id: c.listing_id,
+            amount: c.total_commission,
+            status: c.status,
+            client_payment_status: c.client_payment_status,
+            owner_payment_status: c.owner_payment_status,
+            created_at: c.createdAt,
+            listing_type: c.listing_type
+          })))
+      }
+    });
 
   } catch (error) {
     console.error(error);
@@ -465,13 +361,36 @@ export const sendverificationstatusforadmin = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
+    const admin = await Admin.findOne({ role: "admin" });
+    if (!admin) {
+      console.error("Admin user not found!");
+      return res.status(500).json({ message: "Admin account missing" });
+    }
     // Apply verification status
     if (decision === "authentic") {
-      listing.status = "approved";
+      listing.status = "broker_approved";
       listing.rejection_reason = "";
+      await CreateNotification({
+        userId: admin._id,
+        type: "Verification_review",
+        listingId: listing._id,
+        listingType: listing.type,
+        message: comment || "Listing has been verified and approved by broker",
+        status: "accepted"
+      });
+
     } else {
-      listing.status = "rejected";
+      listing.status = "broker_rejected";
       listing.rejection_reason = comment || "Failed verification";
+
+      await CreateNotification({
+        userId: admin._id,
+        type: "Verification_review",
+        listingId: listing._id,
+        listingType: listing.type,
+        message: listing.rejection_reason,
+        status: "declined",
+      });
     }
 
     listing.verifiedBy = req.user.id;

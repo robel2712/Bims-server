@@ -121,7 +121,7 @@ export const fetchListing = async (req, res) => {
     const {
       type = "all",
       page = 1,
-      limit = 10,
+      limit = 100,
       minPrice,
       maxPrice,
       category,
@@ -207,13 +207,13 @@ export const fetchListing = async (req, res) => {
         .lean()
         .then((data) =>
           data.map((item) => {
-            
+
             if (item.location) {
               item.location = {
                 city: item.location.city,
                 subcity: item.location.subcity,
                 woreda: item.location.woreda,
-                address:item.location.address
+                address: item.location.address
               };
             }
             return {
@@ -276,6 +276,7 @@ export const fetchListingCount = async (req, res) => {
 
 export const verifyListing = async (req, res) => {
   const { id, status, type } = req.query;
+  const { verifiedBy } = req.body;
 
   if (!id || !status || !type) {
     return res
@@ -290,6 +291,11 @@ export const verifyListing = async (req, res) => {
     return res.status(400).json({ message: "Invalid listing type" });
   }
 
+  // Ensure caller is an Admin
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ message: "Unauthorized: Admin access required" });
+  }
+
   try {
     const model = normalizedType === "Vehicle" ? Vehicle : Property;
 
@@ -299,6 +305,19 @@ export const verifyListing = async (req, res) => {
     }
 
     listing.status = status;
+
+    // If admin is approving, record who verified it
+    if (status === "approved") {
+      // Only set verifiedBy if not already set (preserve broker verification)
+      if (!listing.verifiedBy) {
+        listing.verifiedBy = req.user.id;
+      }
+      listing.verifiedAt = new Date();
+    } else if (verifiedBy) {
+      // For other statuses, allow explicit verifiedBy from request body
+      listing.verifiedBy = verifiedBy;
+      listing.verifiedAt = new Date();
+    }
 
     await listing.save();
 
@@ -366,7 +385,7 @@ export const fetchListingById = async (req, res) => {
         city: listing.location.city,
         subcity: listing.location.subcity,
         woreda: listing.location.woreda,
-        address:listing.location.address
+        address: listing.location.address
       };
     }
     console.log(listing);
@@ -905,7 +924,7 @@ export const updateListing = async (req, res) => {
     if (description) listing.description = description;
     if (category) listing.category = category;
     if (price) listing.price = price;
-    
+
     listing.needBroker = needBroker === 'Yes' ? 'Yes' : 'No';
 
 
@@ -923,6 +942,24 @@ export const updateListing = async (req, res) => {
     if (finalProofImagePaths.length > 0) listing.proofImage_paths = finalProofImagePaths;
 
     await listing.save();
+
+    // Notify admin about the listing update
+    try {
+      const admin = await Admin.findOne({ role:"admin" });
+      if (admin) {
+        await CreateNotification({
+          userId: admin._id,
+          type: "listing_updated",
+          listingId: listing._id,
+          listingType: listing.type,
+          message: `Listing "${listing.title}" has been updated by the owner and is pending review`,
+          status: "pending"
+        });
+      }
+    } catch (notifError) {
+      console.error("Failed to send admin notification:", notifError);
+      // Don't fail the update if notification fails
+    }
 
     return res.status(200).json({ message: "Listing updated successfully", listing });
 

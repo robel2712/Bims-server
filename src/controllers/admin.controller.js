@@ -21,7 +21,11 @@ export const fetchListing = async (req, res) => {
 
     const userId = req.user?._id || req.user?.id; // Current logged-in user
     const skip = (page - 1) * limit;
-    // const userType = req.user?.userType; 
+
+    // Ensure caller is an Admin for this specific fetch
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ message: "Unauthorized: Admin access required" });
+    }
 
 
 
@@ -119,6 +123,11 @@ export const RejectListing = async (req, res) => {
 
   if ((type !== "Vehicle" && type !== "Property") || !id) {
     return res.status(400).json({ message: "Required fields missing" });
+  }
+
+  // Ensure caller is an Admin
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ message: "Unauthorized: Admin access required" });
   }
 
   try {
@@ -537,6 +546,11 @@ export const systemHealth = async (req, res) => {
 
 
 export const fetchPendingListing = async (req, res) => {
+  // Ensure caller is an Admin
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ message: "Unauthorized: Admin access required" });
+  }
+
   try {
     const [properties, vehicles] = await Promise.all([
       Property.find({ status: "pending" }).populate("owner_id", "firstName lastName"),
@@ -585,9 +599,21 @@ export const assignBrokerforVerification = async (req, res) => {
 
     listing.status = "assigned";
     listing.assignedVerifier = brokerId;
-    listing.assignedAt = new Date();
+    const assignedAt = new Date();
+    listing.assignedAt = assignedAt;
+    listing.verificationDeadline = new Date(assignedAt.getTime() + 3 * 24 * 60 * 60 * 1000); // 3 days from now
 
     await listing.save();
+
+    await CreateNotification({
+      userId: brokerId,
+      type: "assignment",
+      listingId: listing._id,
+      listingType: modelName,
+      message: `You have been assigned to verify the listing: ${listing.title}`,
+      action_required: true,
+      status: "pending"
+    });
 
     return res.json({
       message: "Broker assigned successfully",
