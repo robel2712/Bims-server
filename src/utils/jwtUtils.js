@@ -17,7 +17,7 @@ export const createToken = (user) => {
     phoneNumber: user.phoneNumber,
     firstName: user.firstName,
     lastName: user.lastName,
-    name:user.name
+    name: user.name
   };
   return jwt.sign(payload, secret, { expiresIn: "10h" });
 };
@@ -26,9 +26,11 @@ export const createAdminToken = (admin) => {
   const payload = {
     id: admin.id,
     email: admin.email,
-    name: admin.name
+    name: admin.name,
+    role: admin.role
   };
   return jwt.sign(payload, secret, { expiresIn: "10h" });
+
 };
 
 
