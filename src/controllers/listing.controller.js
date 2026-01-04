@@ -7,7 +7,7 @@ import Message from "../models/message.model.js";
 import mongoose from "mongoose";
 import { put } from '@vercel/blob';
 import { Notifications } from "../models/notifications.model.js";
-
+import {Commission} from "../models/commision.model.js";
 export const CreateListing = async (req, res) => {
   try {
     const {
@@ -413,16 +413,17 @@ export const fetchListingById = async (req, res) => {
             showContact = true;
           }
         }
-
-        // Check contact fee payment (200 ETB - for verification & trust building)
-        const user = await User.findById(userId);
-        const contactPayment = user.contact_payments?.find(
-          p => p.listing_id?.toString() === listing._id?.toString() &&
-            p.payment_status === 'paid'
-        );
-        contactAccessPaid = !!contactPayment;
-        if (contactAccessPaid) showContact = true; // Contact fee grants access
       }
+
+      // ALWAYS check contact fee payment (200 ETB - for verification & trust building)
+      // This should run regardless of commission status to ensure contact access is granted
+      const user = await User.findById(userId);
+      const contactPayment = user.contact_payments?.find(
+        p => p.listing_id?.toString() === listing._id?.toString() &&
+          p.payment_status === 'paid'
+      );
+      contactAccessPaid = !!contactPayment;
+      if (contactAccessPaid) showContact = true; // Contact fee grants access
     }
 
     // Mask if not allowed

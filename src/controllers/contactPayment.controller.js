@@ -303,7 +303,7 @@ export const verifyContactPayment = async (req, res) => {
           {
             $set: {
               'contact_payments.$.payment_status': 'paid',
-              'contact_payments.$.payment_date': new Date()
+              'contact_payments.$.paid_at': new Date()
             }
           }
         );
