@@ -176,10 +176,10 @@ const router = Router();
  *                   type: string
  */
 
-router.post("/create",  upload.fields([
-    { name: "images", maxCount: 5 },
-    { name: "proofimages", maxCount: 2 }
-  ]), CreateListing);
+router.post("/create", upload.fields([
+  { name: "images", maxCount: 5 },
+  { name: "proofimages", maxCount: 2 }
+]), CreateListing);
 
 /**
  * @swagger
@@ -320,8 +320,8 @@ router.get("/fetchlistcount/:id", fetchListingCount);
  *                   type: string
  *                   example: Internal Server Error
  */
-router.get("/fetch",AuthMiddleWare ,fetchListing);
-router.get("/fetch-demo",fetchListing);
+router.get("/fetch", AuthMiddleWare, fetchListing);
+router.get("/fetch-demo", fetchListing);
 
 /**
  * @swagger

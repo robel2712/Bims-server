@@ -11,13 +11,14 @@ import dealsRouter from "./routes/deals.routes.js";
 import reportRoute from "./routes/report.routes.js";
 import chatRoute from "./routes/chat.routes.js";
 import ratingRouter from "./routes/rating.routes.js";
+import contactPaymentRouter from "./routes/contactPayment.routes.js";
 import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { swaggerOptions } from "./config/swaggerConfig.js";
 import cors from "cors";
-import {Server} from "socket.io";
+import { Server } from "socket.io";
 import http from "http";
-import {RegisterSocket} from "./Socket/socket.js";
+import { RegisterSocket } from "./Socket/socket.js";
 import { incrementRequest } from "./utils/metric.js";
 import { startVerificationCleanupJob } from "./services/verificationService.js";
 // Load env variables
@@ -29,9 +30,11 @@ const server = http.createServer(app);
 // const websocket = require('ws')
 const io = new Server(server, {
   path: "/socket.io",
-  cors: {origin:[process.env.Client_Url],
-  methods: ["GET", "POST"],
-}});
+  cors: {
+    origin: [process.env.Client_Url],
+    methods: ["GET", "POST"],
+  }
+});
 // const ws = websocket.Server({server})
 // Swagger docs setup
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
@@ -41,8 +44,8 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
-  origin: [process.env.Client_Url , process.env.SOCKET_URL,
-   process.env.Admin_Url,process.env.Web_App],
+  origin: [process.env.Client_Url, process.env.SOCKET_URL,
+  process.env.Admin_Url, process.env.Web_App],
   credentials: true,
 }));
 app.use((req, res, next) => {
@@ -59,9 +62,9 @@ app.get("/", (req, res) => {
 });
 RegisterSocket(io);
 app.get("/socket-health", (req, res) => {
-  res.json({ 
-    online: true, 
-    sockets: io.engine.clientsCount 
+  res.json({
+    online: true,
+    sockets: io.engine.clientsCount
   });
 });
 
@@ -72,6 +75,7 @@ app.use("/api/user", userRouter);
 app.use("/api/listing", listingRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/commissions", commissionsRouter);
+app.use("/api/contact-payment", contactPaymentRouter);
 app.use("/api/deals", dealsRouter);
 app.use("/api/report", reportRoute);
 app.use("/api/chat", chatRoute);
