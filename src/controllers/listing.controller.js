@@ -413,17 +413,17 @@ export const fetchListingById = async (req, res) => {
             showContact = true;
           }
         }
-      }
 
-      // ALWAYS check contact fee payment (200 ETB - for verification & trust building)
-      // This should run regardless of commission status to ensure contact access is granted
-      const user = await User.findById(userId);
-      const contactPayment = user.contact_payments?.find(
-        p => p.listing_id?.toString() === listing._id?.toString() &&
-          p.payment_status === 'paid'
-      );
-      contactAccessPaid = !!contactPayment;
-      if (contactAccessPaid) showContact = true; // Contact fee grants access
+        // ALWAYS check contact fee payment (200 ETB - for verification & trust building)
+        // This should run regardless of commission status to ensure contact access is granted
+        const user = await User.findById(userId);
+        const contactPayment = user.contact_payments?.find(
+          p => p.listing_id?.toString() === listing._id?.toString() &&
+            p.payment_status === 'paid'
+        );
+        contactAccessPaid = !!contactPayment;
+        if (contactAccessPaid) showContact = true; // Contact fee grants access
+      }
     }
 
     // Mask if not allowed
