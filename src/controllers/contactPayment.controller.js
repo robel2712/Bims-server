@@ -303,7 +303,7 @@ export const verifyContactPayment = async (req, res) => {
           {
             $set: {
               'contact_payments.$.payment_status': 'paid',
-              'contact_payments.$.paid_at': new Date()
+              'contact_payments.$.payment_date': new Date()
             }
           }
         );
@@ -332,12 +332,6 @@ export const getContactPaymentStatus = async (req, res) => {
   try {
     const { listing_id } = req.params;
 
-    // Add debug logging
-    console.log('=== getContactPaymentStatus Debug ===');
-    console.log('req.params:', req.params);
-    console.log('req.user:', req.user);
-    console.log('listing_id:', listing_id);
-
     // Fix: Use req.user.id instead of req.user._id (JWT token uses 'id' field)
     const user_id = req.user.id;
 
@@ -358,9 +352,20 @@ export const getContactPaymentStatus = async (req, res) => {
       });
     }
 
-    const payment = user.contact_payments?.find(
-      p => p.listing_id?.toString() === listing_id
+    // Find a successful payment first
+    let payment = user.contact_payments?.find(
+      p => p.listing_id?.toString() === listing_id && p.payment_status === 'paid'
     );
+
+    // If no successful payment, find latest attempt
+    if (!payment) {
+      // We can just find the last one or any one
+      // reverse() mutation avoidance: [...arr].reverse()
+      const payments = user.contact_payments?.filter(p => p.listing_id?.toString() === listing_id);
+      if (payments && payments.length > 0) {
+        payment = payments[payments.length - 1];
+      }
+    }
 
 
     return res.status(200).json({
